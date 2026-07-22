@@ -157,7 +157,7 @@ def one_on_one_category_selection_blocks():
                 {
                     "type": "button",
                     "text": {"type": "plain_text", "text": label},
-                    "action_id": "select_1on1_category",
+                    "action_id": f"select_1on1_category-{value}",
                     "value": value,
                 }
                 for label, value in CATEGORY_OPTIONS
@@ -189,7 +189,7 @@ def one_on_one_candidates_blocks(category_value, category_label_text, candidates
         {
             "type": "button",
             "text": {"type": "plain_text", "text": display_name},
-            "action_id": "select_1on1_partner",
+            "action_id": f"select_1on1_partner-{uid}",
             "value": uid,
         }
         for uid, display_name in candidates
@@ -225,7 +225,7 @@ def one_on_one_candidates_blocks(category_value, category_label_text, candidates
 
 def one_on_one_scheduled_text(partner_id, start, end):
     return (
-        "✅ 1on1の予定を仮登録しました（ダミー・実際のカレンダー登録は未実装です）。\n"
+        "✅ 双方の空き時間から最適な日程を選出しました（カレンダーへの実登録は未実装です）。\n"
         f"相手: <@{partner_id}>\n"
         f"日時: {start.strftime('%m/%d(%a) %H:%M')} 〜 {end.strftime('%H:%M')}"
     )

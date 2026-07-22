@@ -22,7 +22,9 @@ _SET_USAGE = (
 
 
 class NotAuthenticatedError(Exception):
-    pass
+    def __init__(self, slack_user_id=None):
+        super().__init__(slack_user_id)
+        self.slack_user_id = slack_user_id
 
 
 class InvalidEventInputError(Exception):
@@ -136,11 +138,10 @@ def create_event(slack_user_id, title, start_dt, duration_minutes, attendee_emai
     )
 
 
-def create_dummy_1on1_event(requester_id, partner_id):
-    # TODO: 両者のGoogleカレンダーを取得して空き時間を探し、実際に予定を登録するロジックを実装する
-    start = (datetime.now(JST) + timedelta(days=1)).replace(hour=15, minute=0, second=0, microsecond=0)
-    end = start + timedelta(minutes=30)
-    return {"start": start, "end": end}
+def find_best_1on1_slot(requester_id, partner_id, duration_minutes=30):
+    from . import scheduler  # 循環importを避けるため遅延import
+
+    return scheduler.find_best_slot(requester_id, partner_id, duration_minutes)
 
 
 def format_events_message(events):

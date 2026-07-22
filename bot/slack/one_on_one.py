@@ -1,7 +1,8 @@
 import logging
 import random
+import re
 
-from gcal import calendar_client
+from gcal import calendar_client, scheduler
 from profiles import profile_store
 
 from . import messages
@@ -23,8 +24,33 @@ def _resolve_display_name(client, user_id):
         return user_id
 
 
+def _describe_user(slack_user_id, requester_id, partner_id):
+    if slack_user_id == requester_id:
+        return "あなた"
+    if slack_user_id == partner_id:
+        return f"相手（<@{partner_id}>）"
+    return "対象者"
+
+
 def _scheduled_message_text(requester_id, partner_id):
-    slot = calendar_client.create_dummy_1on1_event(requester_id, partner_id)
+    try:
+        slot = calendar_client.find_best_1on1_slot(requester_id, partner_id)
+    except calendar_client.NotAuthenticatedError as e:
+        who = _describe_user(e.slack_user_id, requester_id, partner_id)
+        return (
+            f"⚠️ {who}のGoogleカレンダーが連携されていないため、日程を調整できませんでした。\n"
+            "`?google_auth` で連携してから再度お試しください。"
+        )
+    except scheduler.CalendarFetchError as e:
+        who = _describe_user(e.slack_user_id, requester_id, partner_id)
+        logger.error(f"1on1カレンダー取得エラー ({e.slack_user_id}): {e.cause}")
+        return f"⚠️ {who}のカレンダー取得に失敗しました。\n詳細: {e.cause}"
+    except scheduler.NoAvailableSlotError as e:
+        return f"⚠️ {e}"
+    except Exception as e:
+        logger.error(f"1on1日程調整エラー ({requester_id} / {partner_id}): {e}")
+        return f"⚠️ 日程調整に失敗しました。\n詳細: {e}"
+
     return messages.one_on_one_scheduled_text(partner_id, slot["start"], slot["end"])
 
 
@@ -72,7 +98,8 @@ def handle_open_1on1_category_selection(ack, body, client):
 
 
 # カテゴリ選択後、条件に合う候補をDBから探しランダムに3名提示する
-@app.action("select_1on1_category")
+# （ボタンごとにaction_idを一意にする必要があるため "select_1on1_category-<category>" にマッチさせる）
+@app.action(re.compile(r"^select_1on1_category-"))
 def handle_select_1on1_category(ack, body, client):
     ack()
     _post_candidates(client, body["user"]["id"], body["actions"][0]["value"])
@@ -86,7 +113,8 @@ def handle_retry_1on1_category(ack, body, client):
 
 
 # 候補者ボタン押下時、その相手との1on1予定を（ダミーで）登録する
-@app.action("select_1on1_partner")
+# （ボタンごとにaction_idを一意にする必要があるため "select_1on1_partner-<user_id>" にマッチさせる）
+@app.action(re.compile(r"^select_1on1_partner-"))
 def handle_select_1on1_partner(ack, body, client):
     ack()
     user_id = body["user"]["id"]
