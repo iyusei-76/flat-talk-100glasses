@@ -1,0 +1,16 @@
+# 環境変数・シークレット
+.env
+*.pem
+*.key
+
+# データベースの物理ファイルやダンプ
+db/data/
+*.sql.gz
+*.dump
+
+# Pythonのキャッシュ
+__pycache__/
+*.pyc
+
+# ログファイル
+*.log

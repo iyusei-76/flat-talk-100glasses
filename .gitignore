@@ -1,0 +1,10 @@
+# 環境変数ファイル
+.env
+
+# データベースの物理ファイル
+db/data/
+
+# Pythonのキャッシュ
+__pycache__/
+*.py[cod]
+*$py.class
