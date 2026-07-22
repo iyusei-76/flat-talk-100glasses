@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from googleapiclient.discovery import build
 
-import google_auth
+from auth import google_oauth
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def _time_range_today_tomorrow():
 
 
 def get_upcoming_events(slack_user_id):
-    credentials = google_auth.load_credentials(slack_user_id)
+    credentials = google_oauth.load_credentials(slack_user_id)
     if not credentials:
         raise NotAuthenticatedError()
 
@@ -55,6 +55,10 @@ def get_upcoming_events(slack_user_id):
         .execute()
     )
     return response.get("items", [])
+
+
+def extract_mention_ids(text):
+    return _MENTION_RE.findall(text)
 
 
 def parse_set_command(args_text):
@@ -99,7 +103,7 @@ def parse_set_command(args_text):
 
 
 def create_event(slack_user_id, title, start_dt, duration_minutes, attendee_emails=None):
-    credentials = google_auth.load_credentials(slack_user_id)
+    credentials = google_oauth.load_credentials(slack_user_id)
     if not credentials:
         raise NotAuthenticatedError()
 
@@ -130,6 +134,13 @@ def create_event(slack_user_id, title, start_dt, duration_minutes, attendee_emai
         )
         .execute()
     )
+
+
+def create_dummy_1on1_event(requester_id, partner_id):
+    # TODO: 両者のGoogleカレンダーを取得して空き時間を探し、実際に予定を登録するロジックを実装する
+    start = (datetime.now(JST) + timedelta(days=1)).replace(hour=15, minute=0, second=0, microsecond=0)
+    end = start + timedelta(minutes=30)
+    return {"start": start, "end": end}
 
 
 def format_events_message(events):

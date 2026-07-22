@@ -12,8 +12,8 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.credentials import Credentials
 
-import authdb
-import crypto_utils
+from . import token_store
+from . import crypto_utils
 
 logger = logging.getLogger(__name__)
 
@@ -106,13 +106,13 @@ def save_credentials(slack_user_id, credentials):
         crypto_utils.encrypt(credentials.refresh_token) if credentials.refresh_token else None
     )
     scope = " ".join(credentials.scopes) if credentials.scopes else None
-    authdb.save_google_credentials(
+    token_store.save_google_credentials(
         slack_user_id, access_token_enc, refresh_token_enc, credentials.expiry, scope
     )
 
 
 def load_credentials(slack_user_id):
-    row = authdb.get_google_credentials(slack_user_id)
+    row = token_store.get_google_credentials(slack_user_id)
     if not row:
         return None
 

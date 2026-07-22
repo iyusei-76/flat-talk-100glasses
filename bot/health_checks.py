@@ -1,13 +1,12 @@
 import logging
 
-import authdb
-import google_auth
+from auth import google_oauth, token_store
 
 logger = logging.getLogger(__name__)
 
 
 def check_db():
-    authdb.check_connection()
+    token_store.check_connection()
     logger.info("✅ DB接続: OK")
 
 
@@ -17,7 +16,7 @@ def check_slack(slack_app):
 
 
 def check_google():
-    google_auth.check_config()
+    google_oauth.check_config()
     logger.info("✅ Google OAuth設定: OK")
 
 

@@ -16,3 +16,13 @@ CREATE TABLE IF NOT EXISTS google_credentials (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ユーザープロフィール（入社年度・新卒/中途）保存用
+-- Google連携完了後に表示する「登録」ボタン→モーダルから入力される
+CREATE TABLE IF NOT EXISTS user_profiles (
+    slack_user_id VARCHAR(50) PRIMARY KEY,
+    join_year INTEGER NOT NULL,
+    hire_type VARCHAR(20) NOT NULL CHECK (hire_type IN ('new_grad', 'mid_career')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

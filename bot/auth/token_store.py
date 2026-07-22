@@ -1,29 +1,19 @@
-import os
 import logging
 
-import psycopg2
+import db
 
 logger = logging.getLogger(__name__)
 
 
-def get_db_connection():
-    return psycopg2.connect(
-        host=os.environ.get("AUTH_DB_HOST", os.environ.get("DB_HOST", "db")),
-        database=os.environ.get("AUTH_DB_NAME", os.environ.get("DB_NAME")),
-        user=os.environ.get("AUTH_DB_USER", os.environ.get("DB_USER")),
-        password=os.environ.get("AUTH_DB_PASSWORD", os.environ.get("DB_PASSWORD")),
-    )
-
-
 def check_connection():
-    with get_db_connection() as conn:
+    with db.get_auth_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1")
     return True
 
 
 def save_google_credentials(slack_user_id, access_token_enc, refresh_token_enc, token_expiry, scope):
-    with get_db_connection() as conn:
+    with db.get_auth_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -43,7 +33,7 @@ def save_google_credentials(slack_user_id, access_token_enc, refresh_token_enc, 
 
 
 def get_google_credentials(slack_user_id):
-    with get_db_connection() as conn:
+    with db.get_auth_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """

@@ -4,7 +4,8 @@ import logging
 from flask import Flask, request
 from slack_sdk import WebClient
 
-import google_auth
+from . import google_oauth
+from slack import messages
 
 logger = logging.getLogger(__name__)
 
@@ -25,27 +26,31 @@ def oauth2callback():
     if not state or not code:
         return "不正なリクエストです。", 400
 
-    state_entry = google_auth.resolve_state(state)
+    state_entry = google_oauth.resolve_state(state)
     if not state_entry:
         return "認証セッションが無効か期限切れです。Slackでもう一度コマンドを実行してください。", 400
 
     slack_user_id = state_entry["slack_user_id"]
 
     try:
-        credentials = google_auth.exchange_code_for_credentials(code, state_entry["code_verifier"])
-        google_auth.save_credentials(slack_user_id, credentials)
+        credentials = google_oauth.exchange_code_for_credentials(code, state_entry["code_verifier"])
+        google_oauth.save_credentials(slack_user_id, credentials)
     except Exception:
         logger.exception("Google OAuthのトークン交換に失敗しました")
         _notify_slack(slack_user_id, "⚠️ Google連携に失敗しました。もう一度お試しください。")
         return "認証処理でエラーが発生しました。", 500
 
-    _notify_slack(slack_user_id, "✅ Googleアカウントとの連携が完了しました！")
+    _notify_slack(
+        slack_user_id,
+        "✅ Googleアカウントとの連携が完了しました！",
+        blocks=messages.google_auth_success_blocks(),
+    )
     return "Googleアカウントとの連携が完了しました。このタブは閉じて構いません。"
 
 
-def _notify_slack(slack_user_id, text):
+def _notify_slack(slack_user_id, text, blocks=None):
     try:
-        _slack_client.chat_postMessage(channel=slack_user_id, text=text)
+        _slack_client.chat_postMessage(channel=slack_user_id, text=text, blocks=blocks)
     except Exception:
         logger.exception("Slackへの通知送信に失敗しました")
 
