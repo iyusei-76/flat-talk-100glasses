@@ -101,6 +101,13 @@ def parse_set_command(args_text):
     except ValueError:
         raise InvalidEventInputError("日付または時刻の値が不正です。")
 
+    # 指定日時が現在より過去の場合、年をまたいだ指定とみなして翌年に繰り上げる
+    if start_dt < now:
+        try:
+            start_dt = start_dt.replace(year=now.year + 1)
+        except ValueError:
+            raise InvalidEventInputError("日付または時刻の値が不正です。")
+
     return title, start_dt, duration_minutes, mention_ids
 
 

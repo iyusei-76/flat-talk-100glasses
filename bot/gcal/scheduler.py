@@ -124,6 +124,38 @@ def _busy_flags_by_day(slack_user_id, days, time_min, time_max):
     }
 
 
+def fetch_context_snapshot(slack_user_id):
+    """分析用データ（将来の機械学習利用）に添える特徴量スナップショットを取得する。
+    前7日間と、先月同週（4週間前の週、月〜日）の予定の埋まり具合を返す。
+    未連携・API失敗など何らかの理由で取得できない場合はNoneを返す（呼び出し元の処理は継続させる）。"""
+    try:
+        now = datetime.now(JST)
+
+        prior_start = now - timedelta(days=7)
+        prior_busy = _fetch_busy_intervals(slack_user_id, prior_start, now)
+
+        last_month_ref = now - timedelta(days=28)  # 「先月同週」の近似として4週間前を採用
+        week_start = datetime.combine(
+            (last_month_ref - timedelta(days=last_month_ref.weekday())).date(), dtime.min, tzinfo=JST
+        )
+        week_end = week_start + timedelta(days=7)
+        last_month_busy = _fetch_busy_intervals(slack_user_id, week_start, week_end)
+
+        return {
+            "prior_7_days": {
+                "range": [prior_start.isoformat(), now.isoformat()],
+                "busy": [[s.isoformat(), e.isoformat()] for s, e in prior_busy],
+            },
+            "same_week_last_month": {
+                "range": [week_start.isoformat(), week_end.isoformat()],
+                "busy": [[s.isoformat(), e.isoformat()] for s, e in last_month_busy],
+            },
+        }
+    except Exception:
+        logger.warning(f"コンテキストスナップショットの取得に失敗しました ({slack_user_id})", exc_info=True)
+        return None
+
+
 def is_slot_still_available(requester_id, partner_id, start, end):
     """候補提示からユーザーが選ぶまでの間に埋まっていないか、確定直前に再チェックする。"""
     slot = (start, end)

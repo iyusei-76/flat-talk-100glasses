@@ -12,8 +12,11 @@ bot/
 │   ├── google_oauth.py         # (旧 google_auth.py) Google OAuthフロー
 │   ├── oauth_callback_server.py # (旧 oauth_server.py) OAuthコールバック受信用Flaskサーバー
 │   └── token_store.py          # (旧 authdb.py の一部) google_credentials テーブルCRUD
+├── analytics/             # 1on1の分析用データ（将来のML利用向け）
+│   └── store.py           # スコアリング結果・実施状況・アンケートの記録（既存フローには影響させない）
 ├── gcal/                  # カレンダー設定まわり
-│   └── calendar_client.py # Google Calendar API呼び出し + ?set入力解析 + ダミー1on1予定作成
+│   ├── calendar_client.py # Google Calendar API呼び出し + ?set入力解析 + ダミー1on1予定作成
+│   └── scheduler.py       # 1on1候補枠のスコアリング + 分析用コンテキストスナップショット取得
 ├── profiles/              # プロフィール / 1on1マッチングまわり
 │   └── profile_store.py   # (旧 authdb.py の一部) user_profiles テーブルCRUD・候補検索・年度計算
 └── slack/                 # Slack用の文言・ハンドラ
@@ -27,6 +30,7 @@ bot/
 ## 分割の考え方
 
 - [`auth/`](bot/auth/README.md) : Google認証トークンの取得・保存・暗号化
+- [`analytics/`](bot/analytics/README.md) : 1on1のスコアリング結果・実施状況・アンケートの記録（将来のML利用向け）
 - [`gcal/`](bot/gcal/README.md) : Googleカレンダーに対する実際の操作（予定取得・登録）
 - [`profiles/`](bot/profiles/README.md) : 入社年度・新卒/中途などユーザー属性の保存とマッチング条件の判定
 - [`slack/`](bot/slack/README.md) : Slackへの見せ方（文言・Block Kit）とイベント/アクションのハンドラ

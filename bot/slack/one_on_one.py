@@ -3,6 +3,7 @@ import random
 import re
 from datetime import datetime
 
+from analytics import store as analytics_store
 from gcal import calendar_client, scheduler
 from profiles import profile_store
 
@@ -10,6 +11,22 @@ from . import messages
 from .bolt_app import app
 
 logger = logging.getLogger(__name__)
+
+# _post_slot_candidatesが使うfind_1on1_slot_candidates呼び出し時のデフォルト所要分に合わせる
+_DEFAULT_SLOT_DURATION_MINUTES = 30
+
+
+def _record_slot_candidates_analytics(requester_id, partner_id, candidates):
+    """分析用データ（将来の機械学習利用）としてスコアリング結果を記録する。失敗しても1on1フローには影響させない。"""
+    context_snapshot = {
+        "requester": scheduler.fetch_context_snapshot(requester_id),
+        "partner": scheduler.fetch_context_snapshot(partner_id),
+    }
+    attempt_id = analytics_store.record_attempt(
+        requester_id, partner_id, _DEFAULT_SLOT_DURATION_MINUTES, context_snapshot
+    )
+    analytics_store.record_candidate_slots(attempt_id, candidates)
+
 
 # 1on1の相手を @ で指定してもらう「自分で設定する」フローの入力待ちユーザー（プロセス内メモリ）
 _pending_manual_partners = set()
@@ -73,6 +90,9 @@ def _post_slot_candidates(post, requester_id, partner_id):
         text=f"<@{partner_id}> との1on1候補日時を{len(candidates)}件選びました。",
         blocks=messages.one_on_one_slot_candidates_blocks(partner_id, candidates),
     )
+
+    # 分析データの記録はユーザーへの応答を返した後に行う（記録が遅くても応答速度に影響させないため）
+    _record_slot_candidates_analytics(requester_id, partner_id, candidates)
 
 
 def _post_candidates(client, user_id, category):
@@ -226,6 +246,9 @@ def handle_select_1on1_slot(ack, body, client):
         )
     except Exception as e:
         logger.error(f"1on1確定DM送信エラー (partner: {partner_id}): {e}")
+
+    # 分析データの記録はユーザーへの通知を全て送った後に行う（記録が遅くても通知速度に影響させないため）
+    analytics_store.mark_selected_and_record_event(user_id, partner_id, start, end, event.get("id"))
 
 
 # 「自分で設定する」ボタン押下時、相手を @ で指定してもらう入力待ち状態にする
