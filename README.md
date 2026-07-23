@@ -1,8 +1,40 @@
-# bot/ ディレクトリ構成
+# flat-talk-100glasses
+
+社内Slackワークスペース向けの1on1（ネットワーキング目的の対話）相手探し・日程調整ボット。
+
+## できること
+
+- カテゴリ（新卒 / 中途 / 既存社員 / 指定しない）を選ぶと、条件に合う社員をランダムに最大3名提示
+- 提示された相手とのGoogleカレンダーの空き状況を突き合わせ、ヒューリスティックなスコアリングで1on1候補日時を提示（[bot/gcal/README.md](bot/gcal/README.md)参照）
+- 候補から選ぶ、または日付・時刻をモーダルで直接指定してGoogleカレンダーに実登録（Google Meetリンク付き）
+- `?set` コマンドで1on1に限らない任意の予定もカレンダーに登録可能（`@メンション`で招待も付与）
+- 実施後アンケート（`?survey`）で「日程レコメンドの満足度」を収集し、将来的なスコアリング改善のための学習データとして蓄積（[ml/README.md](ml/README.md)参照）
+- `?invite_pause` / `?invite_resume` で1on1候補としての招待を一時停止・再開
+
+## 動作環境
+
+- 言語 / フレームワーク: Python、[Slack Bolt](https://slack.dev/bolt-python/)（Socket Mode）
+- DB: PostgreSQL 15
+- 外部連携: Slack API（Bot Token / App Token）、Google Calendar API（OAuth2）
+- インフラ: Docker Compose（`bot` / `db` の2コンテナ）
+
+## セットアップ
+
+1. `.env.example` を `.env` にコピーし、以下を埋める
+   - `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN`（Socket Mode対応のSlackアプリのトークン）
+   - `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD`
+   - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI`
+   - `GOOGLE_TOKEN_ENCRYPTION_KEY`（`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` で生成）
+2. `docker compose up -d --build`
+3. 初回起動時は `db/init.sql` が自動適用される。既存ボリュームに対する後続のスキーマ変更は自動適用されないため、`db/migrations/` 配下を手動適用する（各ファイル冒頭にコマンド例を記載）
+
+---
+
+## bot/ ディレクトリ構成
 
 関心事ごとにディレクトリを分割している。ロジック自体は変更しておらず、配置の整理のみ。
 
-```
+```text
 bot/
 ├── app.py                 # 薄いエントリーポイント（App起動・スレッド起動のみ）
 ├── db.py                  # 共通DB接続（message_logs用 / auth用の2種類）
@@ -27,7 +59,7 @@ bot/
     └── one_on_one.py            # 1on1のカテゴリ選択・候補提示・日時選択・カレンダー実登録・実施後アンケート
 ```
 
-## 分割の考え方
+### 分割の考え方
 
 - [`auth/`](bot/auth/README.md) : Google認証トークンの取得・保存・暗号化
 - [`analytics/`](bot/analytics/README.md) : 1on1のスコアリング結果・実施状況・アンケートの記録（将来のML利用向け）
@@ -37,7 +69,7 @@ bot/
 
 各ディレクトリの詳細は上記リンク先のサブREADMEを参照。
 
-## 補足
+### 補足
 
 - `calendar`というディレクトリ名は標準ライブラリの`calendar`モジュールと衝突する可能性があるため`gcal/`にしている。
 - Dockerfileは`COPY *.py .`だとサブディレクトリがビルドに含まれないため`COPY . .`に変更済み。
