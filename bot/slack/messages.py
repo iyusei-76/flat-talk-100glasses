@@ -8,8 +8,6 @@ from datetime import datetime
 
 STATIC_COMMANDS = {
     "ping": "pong! サクセスフル！！！",
-    "spanking": "oh yes!!",
-    "stupid": "as!",
 }
 
 HIRE_TYPE_OPTIONS = [
@@ -23,6 +21,21 @@ CATEGORY_OPTIONS = [
     ("既存社員", "existing"),
     ("指定しない", "any"),
 ]
+
+HELP_TEXT = (
+    "*【NNWS Botの使い方】*\n"
+    "このBotとのDMで以下のコマンドを送信してください。\n\n"
+    "• `?help` : このヘルプを表示\n"
+    "• `?start` : 認証・プロフィール登録・1on1作成のうち、途中までしか終わっていないところから続きを案内\n"
+    "• `?ping` : 疎通確認\n"
+    "• `?google_auth` : Googleカレンダーとの連携\n"
+    "• `?check` : 本日〜明日の予定を確認\n"
+    "• `?set タイトル MM/DD HH:MM 所要分 [@招待したい人...]` : 予定をカレンダーに登録\n"
+    "　例: `?set 定例会議 07/22 14:00 60 @tanaka @suzuki`\n\n"
+    "*【1on1について】*\n"
+    "Googleカレンダー連携・プロフィール登録が完了すると、コマンド以外の文字列を送った際に「1on1を作成する」ボタンが表示されます。"
+    "そこから相手を選ぶか自分で指定し、提示された候補日時、または「自分で設定する」から日時を指定して1on1を予約できます。"
+)
 
 
 def hire_type_label(value):
@@ -123,6 +136,25 @@ def profile_registration_view():
             },
         ],
     }
+
+
+def set_command_1on1_suggestion_blocks(text, partner_id):
+    """?setの応答に「1on1を設定する」ボタンを添える（@メンションが含まれていた場合）。
+    ボタンのaction_idはone_on_one.handle_select_1on1_partnerと共通（相手ユーザーIDで即候補提示させる）。"""
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": text}},
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "1on1を設定する"},
+                    "action_id": f"select_1on1_partner-{partner_id}",
+                    "value": partner_id,
+                }
+            ],
+        },
+    ]
 
 
 def one_on_one_entry_blocks():

@@ -40,6 +40,20 @@ def _send_google_auth_prompt(user_id, post):
         post(text="Googleカレンダーとの連携", blocks=messages.google_auth_prompt_blocks(auth_url))
 
 
+def _send_next_step_prompt(user_id, post):
+    """Google認証・プロフィール登録・1on1作成のうち、未完了の次のステップを案内する。
+    post: post(text=..., blocks=...)のシグネチャで呼べる送信関数（sayやchat_postMessageの部分適用）。"""
+    if not _is_google_authenticated(user_id):
+        _send_google_auth_prompt(user_id, post)
+    elif not _is_profile_registered(user_id):
+        post(
+            text="Googleカレンダーとの連携は完了しています。続けてプロフィールを登録してください。",
+            blocks=messages.google_auth_success_blocks(),
+        )
+    else:
+        post(text="1on1を作成しますか？", blocks=messages.one_on_one_entry_blocks())
+
+
 # SlackユーザーIDのリストをメールアドレスに解決する（?set の招待先解決用）
 def resolve_attendee_emails(mention_ids):
     emails = []
@@ -105,6 +119,14 @@ def handle_im_messages(body, say, logger):
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             say(f"⏱️ レスポンス受信時刻: {now}")
 
+    # 4. ヘルプ表示コマンド: ?help
+    elif text == "?help":
+        say(messages.HELP_TEXT)
+
+    # 4-2. セットアップ再開コマンド: ?start（認証・登録・1on1作成のうち未完了の次のステップを案内）
+    elif text == "?start":
+        _send_next_step_prompt(user_id, say)
+
     # 3. 動的処理コマンド: /data (DBの最新5件)
     elif text == "?data":
         try:
@@ -148,17 +170,22 @@ def handle_im_messages(body, say, logger):
     # 7. カレンダー登録コマンド: ?set タイトル MM/DD HH:MM 所要分 [@招待したい人...]
     elif text == "?set" or text.startswith("?set "):
         args_text = text[len("?set"):].strip()
+
+        # @メンションが含まれていれば、成否によらず「1on1を設定する」ボタンも案内する
+        mentioned_ids = calendar_client.extract_mention_ids(args_text)
+        suggested_partner_id = next((uid for uid in mentioned_ids if uid != user_id), None)
+
         try:
             title, start_dt, duration_minutes, mention_ids = calendar_client.parse_set_command(args_text)
             attendee_emails, failed_mentions = resolve_attendee_emails(mention_ids)
             event = calendar_client.create_event(user_id, title, start_dt, duration_minutes, attendee_emails)
         except calendar_client.InvalidEventInputError as e:
-            say(f"⚠️ {e}")
+            response_text = f"⚠️ {e}"
         except calendar_client.NotAuthenticatedError:
-            say("⚠️ Googleカレンダーと連携されていません。`?google_auth` で連携してください。")
+            response_text = "⚠️ Googleカレンダーと連携されていません。`?google_auth` で連携してください。"
         except Exception as e:
             logger.error(f"Calendar登録エラー: {e}")
-            say(f"⚠️ 予定の登録に失敗しました。\n詳細: {e}")
+            response_text = f"⚠️ 予定の登録に失敗しました。\n詳細: {e}"
         else:
             end_dt = start_dt + timedelta(minutes=duration_minutes)
             lines = [
@@ -172,20 +199,20 @@ def handle_im_messages(body, say, logger):
             if failed_mentions:
                 mention_list = ", ".join(f"<@{uid}>" for uid in failed_mentions)
                 lines.append(f"⚠️ メールアドレスが取得できず招待できなかったユーザー: {mention_list}")
-            say("\n".join(lines))
+            response_text = "\n".join(lines)
 
-    # 8. 定義されていない言葉の場合、Google未連携なら連携を、連携済みでプロフィール未登録なら登録を、
-    #    プロフィール登録済みなら1on1作成を促す
-    else:
-        if not _is_google_authenticated(user_id):
-            _send_google_auth_prompt(user_id, say)
-        elif not _is_profile_registered(user_id):
+        if suggested_partner_id:
             say(
-                text="Googleカレンダーとの連携は完了しています。続けてプロフィールを登録してください。",
-                blocks=messages.google_auth_success_blocks(),
+                text=response_text,
+                blocks=messages.set_command_1on1_suggestion_blocks(response_text, suggested_partner_id),
             )
         else:
-            say(text="1on1を作成しますか？", blocks=messages.one_on_one_entry_blocks())
+            say(response_text)
+
+    # 8. 定義されていない言葉の場合、Google未連携なら連携を、連携済みでプロフィール未登録なら登録を、
+    #    プロフィール登録済みなら1on1作成を促す（?startと同じ案内）
+    else:
+        _send_next_step_prompt(user_id, say)
 
 
 # Google連携ボタン（URLボタン）押下時のイベントをack応答のみで受け流す
