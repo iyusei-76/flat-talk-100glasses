@@ -138,10 +138,16 @@ def create_event(slack_user_id, title, start_dt, duration_minutes, attendee_emai
     )
 
 
-def find_best_1on1_slot(requester_id, partner_id, duration_minutes=30):
+def find_1on1_slot_candidates(requester_id, partner_id, duration_minutes=30, top_n=3):
     from . import scheduler  # 循環importを避けるため遅延import
 
-    return scheduler.find_best_slot(requester_id, partner_id, duration_minutes)
+    return scheduler.find_top_slots(requester_id, partner_id, duration_minutes, top_n)
+
+
+def is_1on1_slot_still_available(requester_id, partner_id, start, end):
+    from . import scheduler  # 循環importを避けるため遅延import
+
+    return scheduler.is_slot_still_available(requester_id, partner_id, start, end)
 
 
 def format_events_message(events):

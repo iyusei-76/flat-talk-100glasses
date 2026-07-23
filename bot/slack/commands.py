@@ -12,6 +12,25 @@ from .bolt_app import app
 logger = logging.getLogger(__name__)
 
 
+def _is_google_authenticated(user_id):
+    try:
+        return google_oauth.load_credentials(user_id) is not None
+    except Exception as e:
+        logger.error(f"Google認証状態確認エラー ({user_id}): {e}")
+        return False
+
+
+def _send_google_auth_prompt(user_id, post):
+    """post: post(text=..., blocks=...)のシグネチャで呼べる送信関数（sayやchat_postMessageの部分適用）。"""
+    try:
+        auth_url = google_oauth.create_authorization_url(user_id)
+    except Exception as e:
+        logger.error(f"Google認証URL生成エラー: {e}")
+        post(text="⚠️ Google連携の設定が未完了です。管理者に確認してください。")
+    else:
+        post(text="Googleカレンダーとの連携", blocks=messages.google_auth_prompt_blocks(auth_url))
+
+
 # SlackユーザーIDのリストをメールアドレスに解決する（?set の招待先解決用）
 def resolve_attendee_emails(mention_ids):
     emails = []
@@ -103,13 +122,7 @@ def handle_im_messages(body, say, logger):
 
     # 5. Google連携コマンド: ?google_auth
     elif text == "?google_auth":
-        try:
-            auth_url = google_oauth.create_authorization_url(user_id)
-        except Exception as e:
-            logger.error(f"Google認証URL生成エラー: {e}")
-            say("⚠️ Google連携の設定が未完了です。管理者に確認してください。")
-        else:
-            say(text="Googleカレンダーとの連携", blocks=messages.google_auth_prompt_blocks(auth_url))
+        _send_google_auth_prompt(user_id, say)
 
     # 6. カレンダー確認コマンド: ?check（本日送信時以降〜明日の予定）
     elif text == "?check":
@@ -152,13 +165,29 @@ def handle_im_messages(body, say, logger):
                 lines.append(f"⚠️ メールアドレスが取得できず招待できなかったユーザー: {mention_list}")
             say("\n".join(lines))
 
-    # 8. 定義されていない言葉の場合
+    # 8. 定義されていない言葉の場合、Google未連携なら連携を促す・連携済みなら不明なコマンドである旨を返す
     else:
-        # 何もしない、またはエラーを返すなど（現在は無言の設定）
-        pass
+        if not _is_google_authenticated(user_id):
+            _send_google_auth_prompt(user_id, say)
+        else:
+            say("⚠️ 入力が間違っているか、存在しないコマンドです。")
 
 
 # Google連携ボタン（URLボタン）押下時のイベントをack応答のみで受け流す
 @app.action("google_oauth_connect")
 def handle_google_oauth_button(ack):
     ack()
+
+
+# ユーザーがBotとのDM（Messagesタブ）を開いた際に発火。Google未連携なら連携を促す。
+# ※ Slackアプリ側の「Event Subscriptions」で app_home_opened の購読が必要。
+@app.event("app_home_opened")
+def handle_app_home_opened(event, client):
+    if event.get("tab") != "messages":
+        return
+
+    user_id = event["user"]
+    if not _is_google_authenticated(user_id):
+        _send_google_auth_prompt(
+            user_id, lambda **kwargs: client.chat_postMessage(channel=user_id, **kwargs)
+        )

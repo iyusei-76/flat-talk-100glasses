@@ -223,12 +223,53 @@ def one_on_one_candidates_blocks(category_value, category_label_text, candidates
     ]
 
 
-def one_on_one_scheduled_text(partner_id, start, end):
-    return (
-        "✅ 双方の空き時間から最適な日程を選出しました（カレンダーへの実登録は未実装です）。\n"
-        f"相手: <@{partner_id}>\n"
-        f"日時: {start.strftime('%m/%d(%a) %H:%M')} 〜 {end.strftime('%H:%M')}"
-    )
+def one_on_one_slot_candidates_blocks(partner_id, candidates):
+    """candidates: [{"start": datetime, "end": datetime}, ...]（スコア降順）"""
+    slot_buttons = [
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": f"{c['start'].strftime('%m/%d(%a) %H:%M')}〜{c['end'].strftime('%H:%M')}",
+            },
+            "action_id": f"select_1on1_slot-{i}",
+            "value": f"{partner_id}|{c['start'].isoformat()}|{c['end'].isoformat()}",
+        }
+        for i, c in enumerate(candidates)
+    ]
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"<@{partner_id}> との1on1候補日時です。都合の良いものを選んでください。",
+            },
+        },
+        {"type": "actions", "elements": slot_buttons},
+    ]
+
+
+def one_on_one_scheduled_text(partner_id, start, end, event=None, partner_email=None):
+    lines = [
+        "✅ 1on1の予定をカレンダーに登録しました。",
+        f"相手: <@{partner_id}>",
+        f"日時: {start.strftime('%m/%d(%a) %H:%M')} 〜 {end.strftime('%H:%M')}",
+    ]
+    if event and event.get("hangoutLink"):
+        lines.append(f"Meet: {event['hangoutLink']}")
+    if not partner_email:
+        lines.append(f"⚠️ <@{partner_id}>のメールアドレスが取得できず、招待できませんでした。")
+    return "\n".join(lines)
+
+
+def one_on_one_confirmed_partner_text(requester_id, start, end, event=None):
+    lines = [
+        f"📅 <@{requester_id}> さんとの1on1が確定しました。",
+        f"日時: {start.strftime('%m/%d(%a) %H:%M')} 〜 {end.strftime('%H:%M')}",
+    ]
+    if event and event.get("hangoutLink"):
+        lines.append(f"Meet: {event['hangoutLink']}")
+    return "\n".join(lines)
 
 
 MANUAL_PARTNER_PROMPT_TEXT = "1on1の相手を @ でメンションして送信してください。"

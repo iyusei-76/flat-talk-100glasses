@@ -124,6 +124,17 @@ def _busy_flags_by_day(slack_user_id, days, time_min, time_max):
     }
 
 
+def is_slot_still_available(requester_id, partner_id, start, end):
+    """候補提示からユーザーが選ぶまでの間に埋まっていないか、確定直前に再チェックする。"""
+    slot = (start, end)
+    requester_busy = _fetch_busy_intervals(requester_id, start, end)
+    if _slot_is_busy(slot, requester_busy):
+        return False
+
+    partner_busy = _fetch_busy_intervals(partner_id, start, end)
+    return not _slot_is_busy(slot, partner_busy)
+
+
 def _contiguous_busy_minutes(busy_flags, occupied_start, occupied_end):
     """occupied_start:occupied_end（新規予定分）を仮にbusyとして重ねた場合の、
     前後に連続するbusyブロックの合計分数を返す。"""
@@ -197,9 +208,7 @@ def _generate_candidates(days, requester_busy_by_day, partner_busy_by_day, durat
     return candidates
 
 
-def find_best_slot(requester_id, partner_id, duration_minutes=30):
-    """両者のGoogleカレンダーから空き時間を探し、スコアリングモデルに基づき
-    最も良い1on1候補枠を1つ返す。見つからない場合はNoAvailableSlotErrorを送出する。"""
+def _sorted_candidates(requester_id, partner_id, duration_minutes):
     if duration_minutes <= 0 or duration_minutes % SLOT_MINUTES != 0:
         raise ValueError(f"duration_minutes must be a positive multiple of {SLOT_MINUTES}")
 
@@ -220,5 +229,19 @@ def find_best_slot(requester_id, partner_id, duration_minutes=30):
 
     # スコア降順、同点なら早い日時を優先
     candidates.sort(key=lambda c: (-c["score"], c["date"], c["start"]))
-    best = candidates[0]
-    return {"start": best["start"], "end": best["end"], "score": best["score"]}
+    return candidates
+
+
+def find_top_slots(requester_id, partner_id, duration_minutes=30, top_n=3):
+    """両者のGoogleカレンダーから空き時間を探し、スコアリングモデルに基づき
+    上位top_n件の1on1候補枠を返す。同じ日の枠が並んでも選択肢として意味が薄いため、
+    1日につき最もスコアの高い枠を1つだけ採用し、その中から上位top_n日分を返す。
+    見つからない場合はNoAvailableSlotErrorを送出する。"""
+    candidates = _sorted_candidates(requester_id, partner_id, duration_minutes)
+
+    best_per_day = {}
+    for c in candidates:  # スコア降順ソート済みなので、各日について最初に出てきたものが最良
+        best_per_day.setdefault(c["date"], c)
+
+    top = sorted(best_per_day.values(), key=lambda c: (-c["score"], c["date"], c["start"]))[:top_n]
+    return [{"start": c["start"], "end": c["end"], "score": c["score"]} for c in top]
