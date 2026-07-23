@@ -125,6 +125,24 @@ def profile_registration_view():
     }
 
 
+def one_on_one_entry_blocks():
+    text = "プロフィール登録済みです。1on1の相手を探しましょう。"
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": text}},
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "1on1を作成する"},
+                    "action_id": "open_1on1_category_selection",
+                    "style": "primary",
+                }
+            ],
+        },
+    ]
+
+
 def profile_registration_confirmation_blocks(join_year, hire_type_value):
     text = f"✅ プロフィールを登録しました。\n入社年度: {join_year}年度 / {hire_type_label(hire_type_value)}"
     return [
@@ -260,16 +278,14 @@ def one_on_one_slot_candidates_blocks(partner_id, candidates):
     ]
 
 
-def one_on_one_scheduled_text(partner_id, start, end, event=None, partner_email=None):
-    lines = [
-        "✅ 1on1の予定をカレンダーに登録しました。",
-        f"相手: <@{partner_id}>",
-        f"日時: {start.strftime('%m/%d(%a) %H:%M')} 〜 {end.strftime('%H:%M')}",
-    ]
-    if event and event.get("hangoutLink"):
-        lines.append(f"Meet: {event['hangoutLink']}")
+def one_on_one_scheduled_text(partner_id, partner_email=None, partner_notified=True):
+    lines = ["✅ 1on1の予定を登録しました。"]
     if not partner_email:
         lines.append(f"⚠️ <@{partner_id}>のメールアドレスが取得できず、招待できませんでした。")
+    if partner_notified:
+        lines.append(f"<@{partner_id}>に予定確定のDMを送信しました。")
+    else:
+        lines.append(f"⚠️ <@{partner_id}>への予定確定DMの送信に失敗しました。")
     return "\n".join(lines)
 
 

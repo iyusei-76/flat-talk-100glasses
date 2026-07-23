@@ -228,18 +228,20 @@ def _finalize_1on1_slot(client, user_id, partner_id, start, end):
         )
         return
 
-    client.chat_postMessage(
-        channel=user_id,
-        text=messages.one_on_one_scheduled_text(partner_id, start, end, event, partner_email),
-    )
-
     try:
         client.chat_postMessage(
             channel=partner_id,
             text=messages.one_on_one_confirmed_partner_text(user_id, start, end, event),
         )
+        partner_notified = True
     except Exception as e:
         logger.error(f"1on1確定DM送信エラー (partner: {partner_id}): {e}")
+        partner_notified = False
+
+    client.chat_postMessage(
+        channel=user_id,
+        text=messages.one_on_one_scheduled_text(partner_id, partner_email, partner_notified),
+    )
 
     # 分析データの記録はユーザーへの通知を全て送った後に行う（記録が遅くても通知速度に影響させないため）
     analytics_store.mark_selected_and_record_event(user_id, partner_id, start, end, event.get("id"))

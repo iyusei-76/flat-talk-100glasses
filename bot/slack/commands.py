@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import db
 from auth import google_oauth
 from gcal import calendar_client
+from profiles import profile_store
 
 from . import messages
 from . import one_on_one
@@ -17,6 +18,14 @@ def _is_google_authenticated(user_id):
         return google_oauth.load_credentials(user_id) is not None
     except Exception as e:
         logger.error(f"Google認証状態確認エラー ({user_id}): {e}")
+        return False
+
+
+def _is_profile_registered(user_id):
+    try:
+        return profile_store.get_user_profile(user_id) is not None
+    except Exception as e:
+        logger.error(f"プロフィール登録状態確認エラー ({user_id}): {e}")
         return False
 
 
@@ -165,12 +174,18 @@ def handle_im_messages(body, say, logger):
                 lines.append(f"⚠️ メールアドレスが取得できず招待できなかったユーザー: {mention_list}")
             say("\n".join(lines))
 
-    # 8. 定義されていない言葉の場合、Google未連携なら連携を促す・連携済みなら不明なコマンドである旨を返す
+    # 8. 定義されていない言葉の場合、Google未連携なら連携を、連携済みでプロフィール未登録なら登録を、
+    #    プロフィール登録済みなら1on1作成を促す
     else:
         if not _is_google_authenticated(user_id):
             _send_google_auth_prompt(user_id, say)
+        elif not _is_profile_registered(user_id):
+            say(
+                text="Googleカレンダーとの連携は完了しています。続けてプロフィールを登録してください。",
+                blocks=messages.google_auth_success_blocks(),
+            )
         else:
-            say("⚠️ 入力が間違っているか、存在しないコマンドです。")
+            say(text="1on1を作成しますか？", blocks=messages.one_on_one_entry_blocks())
 
 
 # Google連携ボタン（URLボタン）押下時のイベントをack応答のみで受け流す
