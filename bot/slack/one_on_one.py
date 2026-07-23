@@ -231,7 +231,9 @@ def _finalize_1on1_slot(client, user_id, partner_id, start, end):
     try:
         client.chat_postMessage(
             channel=partner_id,
-            text=messages.one_on_one_confirmed_partner_text(user_id, start, end, event),
+            text=messages.one_on_one_confirmed_partner_text(
+                user_id, start, end, event, invited_to_calendar=bool(partner_email)
+            ),
         )
         partner_notified = True
     except Exception as e:

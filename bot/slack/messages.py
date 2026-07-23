@@ -324,13 +324,15 @@ def one_on_one_scheduled_text(partner_id, partner_email=None, partner_notified=T
     return "\n".join(lines)
 
 
-def one_on_one_confirmed_partner_text(requester_id, start, end, event=None):
+def one_on_one_confirmed_partner_text(requester_id, start, end, event=None, invited_to_calendar=False):
     lines = [
         f"📅 <@{requester_id}> さんとの1on1が確定しました。",
         f"日時: {start.strftime('%m/%d(%a) %H:%M')} 〜 {end.strftime('%H:%M')}",
     ]
     if event and event.get("hangoutLink"):
         lines.append(f"Meet: {event['hangoutLink']}")
+    if invited_to_calendar:
+        lines.append("都合が悪い場合は、カレンダーの招待から「辞退」を選択していただくだけで大丈夫です。")
     return "\n".join(lines)
 
 
