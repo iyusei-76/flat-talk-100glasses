@@ -54,6 +54,10 @@ DAY_TRANSITION_MORNING_CUTOFF = dtime(12, 0)
 DAY_TRANSITION_EVENING_CUTOFF = dtime(13, 0)
 DAY_TRANSITION_PENALTY = 1.5
 
+# 当日この時刻以降にリクエストされた場合、翌日この時刻までの枠は相手への通知が直前すぎるため減点
+LATE_REQUEST_CUTOFF_TIME = dtime(15, 0)
+LATE_REQUEST_PENALTY = 1.0
+
 
 class NoAvailableSlotError(Exception):
     pass
@@ -274,6 +278,7 @@ def _score_candidate(
     slot_start,
     day_before_off,
     day_after_off,
+    late_request_cutoff,
 ):
     # 候補日リストの先頭（=最も近い営業日）ほど加点が大きく、末尾（CANDIDATE_BUSINESS_DAYS-1日後）で0になる
     score = PROXIMITY_BONUS_MAX * (1 - days_from_now / (CANDIDATE_BUSINESS_DAYS - 1))
@@ -295,10 +300,13 @@ def _score_candidate(
 
     score -= _day_transition_penalty(slot_start, day_before_off, day_after_off)
 
+    if late_request_cutoff is not None and slot_start < late_request_cutoff:
+        score -= LATE_REQUEST_PENALTY
+
     return max(SCORE_MIN, min(SCORE_MAX, score))
 
 
-def _generate_candidates(days, requester_busy_by_day, partner_busy_by_day, duration_minutes):
+def _generate_candidates(days, requester_busy_by_day, partner_busy_by_day, duration_minutes, late_request_cutoff):
     duration_slots = duration_minutes // SLOT_MINUTES
     candidates = []
 
@@ -329,6 +337,7 @@ def _generate_candidates(days, requester_busy_by_day, partner_busy_by_day, durat
                 slot_start,
                 day_before_off,
                 day_after_off,
+                late_request_cutoff,
             )
             candidates.append(
                 {
@@ -346,7 +355,8 @@ def _sorted_candidates(requester_id, partner_id, duration_minutes):
     if duration_minutes <= 0 or duration_minutes % SLOT_MINUTES != 0:
         raise ValueError(f"duration_minutes must be a positive multiple of {SLOT_MINUTES}")
 
-    today = datetime.now(JST).date()
+    now = datetime.now(JST)
+    today = now.date()
     days = _candidate_business_days(today)
     if not days:
         raise NoAvailableSlotError("候補となる営業日が見つかりませんでした。")
@@ -357,7 +367,15 @@ def _sorted_candidates(requester_id, partner_id, duration_minutes):
     requester_busy_by_day = _busy_flags_by_day(requester_id, days, time_min, time_max)
     partner_busy_by_day = _busy_flags_by_day(partner_id, days, time_min, time_max)
 
-    candidates = _generate_candidates(days, requester_busy_by_day, partner_busy_by_day, duration_minutes)
+    late_request_cutoff = None
+    if now.time() >= LATE_REQUEST_CUTOFF_TIME:
+        late_request_cutoff = datetime.combine(
+            today + timedelta(days=1), LATE_REQUEST_CUTOFF_TIME, tzinfo=JST
+        )
+
+    candidates = _generate_candidates(
+        days, requester_busy_by_day, partner_busy_by_day, duration_minutes, late_request_cutoff
+    )
     if not candidates:
         raise NoAvailableSlotError("双方の空き時間が見つかりませんでした。")
 
