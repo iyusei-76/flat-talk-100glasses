@@ -28,7 +28,7 @@
 
 - `slack/one_on_one.py`の`_post_slot_candidates`（候補日時提示時）→ `record_attempt` + `record_candidate_slots`
   - `context_snapshot`は`gcal/scheduler.fetch_context_snapshot()`で取得（前7日間 / 先月同週=4週間前の週の空き状況）
-- `slack/one_on_one.py`の`handle_select_1on1_slot`（カレンダー登録確定時）→ `mark_selected_and_record_event`
+- `slack/one_on_one.py`の`_finalize_1on1_slot`（カレンダー登録確定時。候補日時ボタン選択・「自分で設定する」モーダル送信の両方から共通で呼ばれる）→ `mark_selected_and_record_event`
 - `slack/one_on_one.py`の`?survey`コマンド（`post_next_pending_survey`）→ `get_pending_schedule_surveys`で終了時刻を過ぎた未回答の1on1を1件提示し、
   スコアボタン押下時（`handle_survey_score`）→ `record_survey`で`schedule_score`を記録
   - 「実施済みかどうか」はカレンダー側のポーリングでは検知していない。終了時刻を過ぎていて`status != 'cancelled'`であれば

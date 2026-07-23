@@ -8,7 +8,7 @@ Slack Bolt を使ったイベント/アクションのハンドラと、ユー�
 |---|---|
 | `bolt_app.py` | Boltの `App` インスタンス生成。各ハンドラモジュールはここから`app`をimportして共有する |
 | `messages.py` | 全てのSlack文言・Block Kitテンプレート集約。業務ロジック（DB検索・Google連携・カレンダー操作）は持たない |
-| `commands.py` | DMの `message` イベント全般のルーティング。固定応答・`?ping`/`?data`/`?google_auth`/`?check`/`?set`/`?survey` |
+| `commands.py` | DMの `message` イベント全般のルーティング。固定応答・`?ping`/`?help`/`?start`/`?data`/`?google_auth`/`?check`/`?set`/`?survey`/`?invite_pause`/`?invite_resume` |
 | `profile_registration.py` | 「登録する」ボタン → プロフィール登録モーダルの表示・送信処理 |
 | `one_on_one.py` | 1on1のカテゴリ選択 → 候補者提示 → 候補日時提示 → カレンダー登録までの一連のアクションハンドラ。実施後アンケート（`?survey`）の提示・回答記録も含む |
 
@@ -19,20 +19,26 @@ Slack Bolt を使ったイベント/アクションのハンドラと、ユー�
 1. 全メッセージを`message_logs`にDB記録
 2. 「自分で設定する」フロー中（`one_on_one._pending_manual_partners`）ならメンション入力として処理
 3. 固定応答コマンド（`messages.STATIC_COMMANDS`）
-4. `?ping` / `?data`（動作確認・DB最新5件表示）
-5. `?google_auth`（Google連携開始）
-6. `?check`（本日〜明日の予定確認）
-7. `?set ...`（予定登録、`gcal/calendar_client.parse_set_command`に委譲）
-8. `?survey`（終了時刻を過ぎた1on1のうち未回答の日程アンケートを1件提示、`one_on_one.post_next_pending_survey`に委譲）
-9. 上記以外：未連携ならGoogle連携を促し、連携済みなら不明コマンド扱い
+4. `?ping`（疎通確認、受信時刻またはDB保存エラーを返す）
+5. `?help`（ヘルプ表示）
+6. `?start`（Google連携・プロフィール登録・1on1作成のうち未完了の次のステップを案内）
+7. `?data`（DB最新5件表示）
+8. `?google_auth`（Google連携開始）
+9. `?check`（本日〜明日の予定確認）
+10. `?set ...`（予定登録、`gcal/calendar_client.parse_set_command`に委譲）
+11. `?survey`（終了時刻を過ぎた1on1のうち未回答の日程アンケートを1件提示、`one_on_one.post_next_pending_survey`に委譲）
+12. `?invite_pause` / `?invite_resume`（1on1候補としての招待の一時停止・再開、`profiles/profile_store.set_accepts_invitations`に委譲。プロフィール未登録なら登録を案内）
+13. 上記以外：未連携ならGoogle連携を促し、連携済みでプロフィール未登録なら登録を、登録済みなら1on1作成を促す（`?start`と同じ案内）
 
 ## one_on_one.py の状態遷移
 
 1. `open_1on1_category_selection` : カテゴリ選択ボタンを表示
-2. `select_1on1_category-*` : `profiles/profile_store`から候補を検索し、ランダムに最大3名提示
-3. `select_1on1_partner-*` : `gcal/calendar_client.find_1on1_slot_candidates`で候補日時を3件提示
-4. `select_1on1_slot-*` : 選択直前に空き状況を再チェック（`is_1on1_slot_still_available`）してからカレンダーに登録し、双方へ通知
-5. `manual_1on1_partner` : ランダム抽選ではなく相手を`@`メンションで直接指定するフロー（`_pending_manual_partners`に入力待ちユーザーを保持し、`try_handle_pending_manual_partner`が`commands.py`から呼ばれる）
+2. `select_1on1_category-*` : `profiles/profile_store`から候補を検索し、ランダムに最大3名提示（`accepts_invitations=FALSE`のユーザーは候補から除外済み）
+3. `retry_1on1_category` : 「もう一度選ぶ」ボタン。同じカテゴリで再抽選（`select_1on1_category-*`と同じ処理を再実行）
+4. `select_1on1_partner-*` : `gcal/calendar_client.find_1on1_slot_candidates`で候補日時を3件提示
+5. `select_1on1_slot-*` : 提示された候補日時ボタン押下時、選択直前に空き状況を再チェック（`is_1on1_slot_still_available`）してから`_finalize_1on1_slot`でカレンダーに登録し、双方へ通知
+6. `manual_1on1_slot` → `manual_1on1_slot_modal` : 候補日時の下の「自分で設定する」ボタンから日付・時刻をモーダルで直接指定するフロー。過去日時はモーダルのバリデーションでエラーにし、送信時は`select_1on1_slot-*`と同じ`_finalize_1on1_slot`で登録する
+7. `manual_1on1_partner` : ランダム抽選ではなく相手を`@`メンションで直接指定するフロー（`_pending_manual_partners`に入力待ちユーザーを保持し、`try_handle_pending_manual_partner`が`commands.py`から呼ばれる）
 
 ## 実施後アンケート（?survey）
 

@@ -15,16 +15,16 @@ bot/
 ├── analytics/             # 1on1の分析用データ（将来のML利用向け）
 │   └── store.py           # スコアリング結果・実施状況・アンケートの記録（既存フローには影響させない）
 ├── gcal/                  # カレンダー設定まわり
-│   ├── calendar_client.py # Google Calendar API呼び出し + ?set入力解析 + ダミー1on1予定作成
+│   ├── calendar_client.py # Google Calendar API呼び出し + ?set入力解析 + 1on1予定の実登録
 │   └── scheduler.py       # 1on1候補枠のスコアリング + 分析用コンテキストスナップショット取得
 ├── profiles/              # プロフィール / 1on1マッチングまわり
-│   └── profile_store.py   # user_profiles テーブルCRUD・候補検索・年度計算
+│   └── profile_store.py   # user_profiles テーブルCRUD・候補検索・年度計算・招待受付停止フラグ
 └── slack/                 # Slack用の文言・ハンドラ
     ├── bolt_app.py              # Boltの App インスタンス（各ハンドラモジュールで共有）
     ├── messages.py              # 全てのSlack文言・Block Kitテンプレート
-    ├── commands.py              # message イベント & ?ping/?data/?google_auth/?check/?set
+    ├── commands.py              # message イベント & ?ping/?help/?start/?data/?google_auth/?check/?set/?survey/?invite_pause/?invite_resume
     ├── profile_registration.py  # 「登録する」ボタン・プロフィール登録モーダル
-    └── one_on_one.py            # 1on1のカテゴリ選択・候補提示・スケジュール（ダミー）
+    └── one_on_one.py            # 1on1のカテゴリ選択・候補提示・日時選択・カレンダー実登録・実施後アンケート
 ```
 
 ## 分割の考え方
