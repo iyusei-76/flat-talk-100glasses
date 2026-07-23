@@ -209,6 +209,10 @@ def handle_im_messages(body, say, logger):
         else:
             say(response_text)
 
+    # 7-2. 実施後アンケートコマンド: ?survey（終了済み1on1のうち未回答のものを1件提示）
+    elif text == "?survey":
+        one_on_one.post_next_pending_survey(user_id, say)
+
     # 8. 定義されていない言葉の場合、Google未連携なら連携を、連携済みでプロフィール未登録なら登録を、
     #    プロフィール登録済みなら1on1作成を促す（?startと同じ案内）
     else:

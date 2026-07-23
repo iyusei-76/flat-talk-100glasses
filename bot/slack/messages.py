@@ -31,7 +31,8 @@ HELP_TEXT = (
     "• `?google_auth` : Googleカレンダーとの連携\n"
     "• `?check` : 本日〜明日の予定を確認\n"
     "• `?set タイトル MM/DD HH:MM 所要分 [@招待したい人...]` : 予定をカレンダーに登録\n"
-    "　例: `?set 定例会議 07/22 14:00 60 @tanaka @suzuki`\n\n"
+    "　例: `?set 定例会議 07/22 14:00 60 @tanaka @suzuki`\n"
+    "• `?survey` : 実施済みの1on1について日程アンケートに回答\n\n"
     "*【1on1について】*\n"
     "Googleカレンダー連携・プロフィール登録が完了すると、コマンド以外の文字列を送った際に「1on1を作成する」ボタンが表示されます。"
     "そこから相手を選ぶか自分で指定し、提示された候補日時、または「自分で設定する」から日時を指定して1on1を予約できます。"
@@ -332,6 +333,45 @@ def one_on_one_confirmed_partner_text(requester_id, start, end, event=None):
 
 
 MANUAL_PARTNER_PROMPT_TEXT = "1on1の相手を @ でメンションして送信してください。"
+
+
+# --- 実施後アンケート（?survey） ---
+
+NO_PENDING_SURVEYS_TEXT = "アンケート回答待ちの1on1はありません。"
+SURVEY_THANKS_TEXT = "✅ アンケートへの回答ありがとうございました。"
+
+_SCHEDULE_SCORE_LABELS = {
+    0: "0: 忙しくて迷惑だった",
+    1: "1",
+    2: "2",
+    3: "3",
+    4: "4",
+    5: "5: ちょうどよかった",
+}
+
+
+def one_on_one_survey_prompt_blocks(event_id, other_user_id, start, end, remaining_count=0):
+    lines = [
+        "*アンケート*\n日程のレコメンドはいかがでしたか？",
+        f"<@{other_user_id}> との1on1（{start.strftime('%m/%d(%a) %H:%M')}〜{end.strftime('%H:%M')}）",
+    ]
+    if remaining_count > 0:
+        lines.append(f"（ほかに回答待ちが{remaining_count}件あります。回答後にもう一度 `?survey` を送ってください）")
+
+    score_buttons = [
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": label},
+            "action_id": f"survey_score-{event_id}-{score}",
+            "value": f"{event_id}|{score}",
+        }
+        for score, label in _SCHEDULE_SCORE_LABELS.items()
+    ]
+
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}},
+        {"type": "actions", "elements": score_buttons},
+    ]
 
 
 def manual_1on1_slot_view(partner_id):

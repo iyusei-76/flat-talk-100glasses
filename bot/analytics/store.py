@@ -64,6 +64,7 @@ _SCHEMA_STATEMENTS = (
         slack_user_id VARCHAR(50) NOT NULL,
         held BOOLEAN,
         feedback TEXT,
+        schedule_score INTEGER CHECK (schedule_score BETWEEN 0 AND 5),
         submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
     """,
@@ -207,19 +208,61 @@ def update_event_status(event_id, status, checked_start=None, checked_end=None):
         )
 
 
-def record_survey(event_id, slack_user_id, held, feedback=None):
-    """実施後アンケート結果の記録（未実装の送信フロー向けに用意）。"""
+def record_survey(event_id, slack_user_id, held, feedback=None, schedule_score=None):
+    """実施後アンケート結果の記録（`slack/one_on_one.py`の`?survey`回答ハンドラから呼ばれる）。
+
+    schedule_score: 「日程のレコメンドはいかがでしたか」の回答（0:忙しくて迷惑だった 〜 5:ちょうどよかった）。
+    """
     try:
         with db.get_analytics_connection() as conn:
             _ensure_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO one_on_one_surveys (event_id, slack_user_id, held, feedback)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO one_on_one_surveys (event_id, slack_user_id, held, feedback, schedule_score)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
-                    (event_id, slack_user_id, held, feedback),
+                    (event_id, slack_user_id, held, feedback, schedule_score),
                 )
             conn.commit()
     except Exception:
         logger.warning(f"1on1分析データ(survey)の記録に失敗しました (event_id={event_id})", exc_info=True)
+
+
+def get_pending_schedule_surveys(slack_user_id, limit=5):
+    """終了時刻を過ぎた（実施されたと思われる）1on1のうち、このユーザーがまだ
+    日程レコメンドのスコアを回答していないものを、終了時刻が近い順に返す。
+
+    他の公開関数と異なり、ここでは例外を握りつぶさない。`?survey`コマンドから
+    能動的に呼ばれる読み取り専用の問い合わせであり、失敗時は呼び出し側（Slackハンドラ）で
+    ユーザーにエラーを表示する必要があるため。
+    """
+    with db.get_analytics_connection() as conn:
+        _ensure_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    e.id,
+                    CASE WHEN e.requester_id = %(user_id)s THEN e.partner_id ELSE e.requester_id END,
+                    e.original_start,
+                    e.original_end
+                FROM one_on_one_events e
+                WHERE (e.requester_id = %(user_id)s OR e.partner_id = %(user_id)s)
+                  AND e.original_end < CURRENT_TIMESTAMP
+                  AND e.status != 'cancelled'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM one_on_one_surveys s
+                      WHERE s.event_id = e.id AND s.slack_user_id = %(user_id)s AND s.schedule_score IS NOT NULL
+                  )
+                ORDER BY e.original_end ASC
+                LIMIT %(limit)s
+                """,
+                {"user_id": slack_user_id, "limit": limit},
+            )
+            rows = cur.fetchall()
+
+    return [
+        {"event_id": row[0], "other_user_id": row[1], "start": row[2], "end": row[3]}
+        for row in rows
+    ]

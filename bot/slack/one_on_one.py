@@ -299,6 +299,48 @@ def handle_manual_1on1_partner(ack, body, client):
     client.chat_postMessage(channel=user_id, text=messages.MANUAL_PARTNER_PROMPT_TEXT)
 
 
+# --- 実施後アンケート（?survey） ---
+
+def post_next_pending_survey(user_id, post):
+    """?surveyコマンド用: 終了時刻を過ぎた1on1のうち、まだ日程レコメンドのスコアを
+    回答していないものを1件提示する（複数あれば直近終了のものを優先し、残り件数を案内）。
+    post: post(text=..., blocks=...)のシグネチャで呼べる送信関数（sayやchat_postMessageの部分適用）。"""
+    try:
+        pending = analytics_store.get_pending_schedule_surveys(user_id)
+    except Exception as e:
+        logger.error(f"アンケート対象1on1取得エラー ({user_id}): {e}")
+        post(text=f"⚠️ アンケート対象の取得に失敗しました。\n詳細: {e}")
+        return
+
+    if not pending:
+        post(text=messages.NO_PENDING_SURVEYS_TEXT)
+        return
+
+    next_survey = pending[0]
+    remaining_count = len(pending) - 1
+    post(
+        text="実施済みの1on1についてアンケートにご協力ください。",
+        blocks=messages.one_on_one_survey_prompt_blocks(
+            next_survey["event_id"],
+            next_survey["other_user_id"],
+            next_survey["start"],
+            next_survey["end"],
+            remaining_count,
+        ),
+    )
+
+
+# アンケートのスコアボタン押下時、回答を記録する
+# （ボタンごとにaction_idを一意にする必要があるため "survey_score-<event_id>-<score>" にマッチさせる）
+@app.action(re.compile(r"^survey_score-"))
+def handle_survey_score(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    event_id_str, score_str = body["actions"][0]["value"].split("|")
+    analytics_store.record_survey(int(event_id_str), user_id, held=True, schedule_score=int(score_str))
+    client.chat_postMessage(channel=user_id, text=messages.SURVEY_THANKS_TEXT)
+
+
 def try_handle_pending_manual_partner(user_id, text, say):
     """「自分で設定する」フローで@メンション入力待ちのユーザーからのDMを処理する。
     該当ユーザーでなければFalseを返し、通常のコマンドルーティングに委ねる。

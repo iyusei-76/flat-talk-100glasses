@@ -70,12 +70,14 @@ CREATE TABLE IF NOT EXISTS one_on_one_events (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 実施後アンケート結果（送信フローは未実装）
+-- 実施後アンケート結果（?surveyコマンドから送信）
 CREATE TABLE IF NOT EXISTS one_on_one_surveys (
     id SERIAL PRIMARY KEY,
     event_id INTEGER NOT NULL REFERENCES one_on_one_events(id),
     slack_user_id VARCHAR(50) NOT NULL,
     held BOOLEAN,
     feedback TEXT,
+    -- 「日程のレコメンドはいかがでしたか」の回答（0:忙しくて迷惑だった 〜 5:ちょうどよかった）
+    schedule_score INTEGER CHECK (schedule_score BETWEEN 0 AND 5),
     submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
