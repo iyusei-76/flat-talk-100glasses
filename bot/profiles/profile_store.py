@@ -46,6 +46,20 @@ def get_user_profile(slack_user_id):
     return {"join_year": row[0], "hire_type": row[1]}
 
 
+def set_accepts_invitations(slack_user_id, accepts):
+    with db.get_auth_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE user_profiles
+                SET accepts_invitations = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE slack_user_id = %s
+                """,
+                (accepts, slack_user_id),
+            )
+        conn.commit()
+
+
 def get_candidate_slack_user_ids(category, current_fiscal_year_value, exclude_user_id=None):
     if category == "new_grad":
         # 新卒: 今の年度に入社した新卒
@@ -67,6 +81,7 @@ def get_candidate_slack_user_ids(category, current_fiscal_year_value, exclude_us
         raise ValueError(f"未知のカテゴリです: {category}")
 
     conditions = [f"({condition})"] if condition else []
+    conditions.append("accepts_invitations")
     if exclude_user_id:
         conditions.append("slack_user_id != %s")
         params.append(exclude_user_id)

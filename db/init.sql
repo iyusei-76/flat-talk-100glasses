@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     slack_user_id VARCHAR(50) PRIMARY KEY,
     join_year INTEGER NOT NULL,
     hire_type VARCHAR(20) NOT NULL CHECK (hire_type IN ('new_grad', 'mid_career')),
+    -- 1on1候補としての招待を受け付けるか（false ならカテゴリ抽選候補から除外される）
+    accepts_invitations BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

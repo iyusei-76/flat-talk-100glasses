@@ -213,6 +213,16 @@ def handle_im_messages(body, say, logger):
     elif text == "?survey":
         one_on_one.post_next_pending_survey(user_id, say)
 
+    # 7-3. 1on1招待の受付停止/再開コマンド: ?invite_pause / ?invite_resume
+    #     （候補検索(profile_store.get_candidate_slack_user_ids)がaccepts_invitationsを参照する）
+    elif text in ("?invite_pause", "?invite_resume"):
+        if not _is_profile_registered(user_id):
+            say(messages.INVITE_TOGGLE_REQUIRES_PROFILE_TEXT)
+        else:
+            accepts = text == "?invite_resume"
+            profile_store.set_accepts_invitations(user_id, accepts)
+            say(messages.INVITE_RESUMED_TEXT if accepts else messages.INVITE_PAUSED_TEXT)
+
     # 8. 定義されていない言葉の場合、Google未連携なら連携を、連携済みでプロフィール未登録なら登録を、
     #    プロフィール登録済みなら1on1作成を促す（?startと同じ案内）
     else:

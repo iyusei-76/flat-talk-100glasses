@@ -32,7 +32,9 @@ HELP_TEXT = (
     "• `?check` : 本日〜明日の予定を確認\n"
     "• `?set タイトル MM/DD HH:MM 所要分 [@招待したい人...]` : 予定をカレンダーに登録\n"
     "　例: `?set 定例会議 07/22 14:00 60 @tanaka @suzuki`\n"
-    "• `?survey` : 実施済みの1on1について日程アンケートに回答\n\n"
+    "• `?survey` : 実施済みの1on1について日程アンケートに回答\n"
+    "• `?invite_pause` : 1on1候補としての招待を一時停止\n"
+    "• `?invite_resume` : 1on1候補としての招待を再開\n\n"
     "*【1on1について】*\n"
     "Googleカレンダー連携・プロフィール登録が完了すると、コマンド以外の文字列を送った際に「1on1を作成する」ボタンが表示されます。"
     "そこから相手を選ぶか自分で指定し、提示された候補日時、または「自分で設定する」から日時を指定して1on1を予約できます。"
@@ -333,6 +335,13 @@ def one_on_one_confirmed_partner_text(requester_id, start, end, event=None):
 
 
 MANUAL_PARTNER_PROMPT_TEXT = "1on1の相手を @ でメンションして送信してください。"
+
+
+# --- 1on1招待の受付停止/再開（?invite_pause / ?invite_resume） ---
+
+INVITE_PAUSED_TEXT = "🔕 1on1の招待を一時停止しました。カテゴリ抽選の候補から外れます。`?invite_resume` で再開できます。"
+INVITE_RESUMED_TEXT = "🔔 1on1の招待を再開しました。"
+INVITE_TOGGLE_REQUIRES_PROFILE_TEXT = "⚠️ プロフィール登録が完了していないため設定できません。`?start` から登録してください。"
 
 
 # --- 実施後アンケート（?survey） ---
