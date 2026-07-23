@@ -1,7 +1,7 @@
 import logging
 import random
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from analytics import store as analytics_store
 from gcal import calendar_client, scheduler
@@ -165,15 +165,9 @@ def handle_select_1on1_partner(ack, body, client):
     )
 
 
-# 候補日時ボタン押下時、その日時で1on1予定をGoogleカレンダーに実登録する
-# （ボタンごとにaction_idを一意にする必要があるため "select_1on1_slot-<index>" にマッチさせる）
-@app.action(re.compile(r"^select_1on1_slot-"))
-def handle_select_1on1_slot(ack, body, client):
-    ack()
-    user_id = body["user"]["id"]
-    partner_id, start_iso, end_iso = body["actions"][0]["value"].split("|")
-    start = datetime.fromisoformat(start_iso)
-    end = datetime.fromisoformat(end_iso)
+def _finalize_1on1_slot(client, user_id, partner_id, start, end):
+    """指定日時で空き状況を再確認し、問題なければGoogleカレンダーに1on1予定を登録して双方に通知する。
+    候補ボタン選択・「自分で設定する」による手動入力の両方から共通で呼ばれる。"""
     duration_minutes = int((end - start).total_seconds() // 60)
 
     try:
@@ -249,6 +243,49 @@ def handle_select_1on1_slot(ack, body, client):
 
     # 分析データの記録はユーザーへの通知を全て送った後に行う（記録が遅くても通知速度に影響させないため）
     analytics_store.mark_selected_and_record_event(user_id, partner_id, start, end, event.get("id"))
+
+
+# 候補日時ボタン押下時、その日時で1on1予定をGoogleカレンダーに実登録する
+# （ボタンごとにaction_idを一意にする必要があるため "select_1on1_slot-<index>" にマッチさせる）
+@app.action(re.compile(r"^select_1on1_slot-"))
+def handle_select_1on1_slot(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    partner_id, start_iso, end_iso = body["actions"][0]["value"].split("|")
+    start = datetime.fromisoformat(start_iso)
+    end = datetime.fromisoformat(end_iso)
+    _finalize_1on1_slot(client, user_id, partner_id, start, end)
+
+
+# 候補日時の下の「自分で設定する」ボタン押下時、日付・時刻選択モーダルを開く
+@app.action("manual_1on1_slot")
+def handle_manual_1on1_slot(ack, body, client):
+    ack()
+    partner_id = body["actions"][0]["value"]
+    client.views_open(trigger_id=body["trigger_id"], view=messages.manual_1on1_slot_view(partner_id))
+
+
+# 日付・時刻選択モーダル送信時、その日時で1on1予定をGoogleカレンダーに実登録する
+@app.view("manual_1on1_slot_modal")
+def handle_manual_1on1_slot_submission(ack, body, client, view):
+    user_id = body["user"]["id"]
+    partner_id = view["private_metadata"]
+    values = view["state"]["values"]
+    date_str = values["manual_slot_date_block"]["manual_slot_date_select"]["selected_date"]
+    time_str = values["manual_slot_time_block"]["manual_slot_time_select"]["selected_time"]
+
+    start = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=calendar_client.JST)
+
+    if start <= datetime.now(calendar_client.JST):
+        ack(
+            response_action="errors",
+            errors={"manual_slot_date_block": "現在より後の日時を指定してください。"},
+        )
+        return
+
+    ack()
+    end = start + timedelta(minutes=_DEFAULT_SLOT_DURATION_MINUTES)
+    _finalize_1on1_slot(client, user_id, partner_id, start, end)
 
 
 # 「自分で設定する」ボタン押下時、相手を @ で指定してもらう入力待ち状態にする

@@ -246,6 +246,17 @@ def one_on_one_slot_candidates_blocks(partner_id, candidates):
             },
         },
         {"type": "actions", "elements": slot_buttons},
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "自分で設定する"},
+                    "action_id": "manual_1on1_slot",
+                    "value": partner_id,
+                }
+            ],
+        },
     ]
 
 
@@ -273,3 +284,36 @@ def one_on_one_confirmed_partner_text(requester_id, start, end, event=None):
 
 
 MANUAL_PARTNER_PROMPT_TEXT = "1on1の相手を @ でメンションして送信してください。"
+
+
+def manual_1on1_slot_view(partner_id):
+    return {
+        "type": "modal",
+        "callback_id": "manual_1on1_slot_modal",
+        "private_metadata": partner_id,
+        "title": {"type": "plain_text", "text": "日時を指定"},
+        "submit": {"type": "plain_text", "text": "予約する"},
+        "close": {"type": "plain_text", "text": "キャンセル"},
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "manual_slot_date_block",
+                "label": {"type": "plain_text", "text": "日付"},
+                "element": {
+                    "type": "datepicker",
+                    "action_id": "manual_slot_date_select",
+                    "placeholder": {"type": "plain_text", "text": "日付を選択"},
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "manual_slot_time_block",
+                "label": {"type": "plain_text", "text": "時刻"},
+                "element": {
+                    "type": "timepicker",
+                    "action_id": "manual_slot_time_select",
+                    "placeholder": {"type": "plain_text", "text": "時刻を選択"},
+                },
+            },
+        ],
+    }

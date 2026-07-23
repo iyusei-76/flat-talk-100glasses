@@ -63,6 +63,23 @@ def extract_mention_ids(text):
     return _MENTION_RE.findall(text)
 
 
+def _resolve_start_dt(month, day, hour, minute):
+    """月日時分から開始日時を組み立てる。現在時刻より過去になる場合は年をまたいだ指定とみなして翌年に繰り上げる。"""
+    now = datetime.now(JST)
+    try:
+        start_dt = datetime(now.year, month, day, hour, minute, tzinfo=JST)
+    except ValueError:
+        raise InvalidEventInputError("日付または時刻の値が不正です。")
+
+    if start_dt < now:
+        try:
+            start_dt = start_dt.replace(year=now.year + 1)
+        except ValueError:
+            raise InvalidEventInputError("日付または時刻の値が不正です。")
+
+    return start_dt
+
+
 def parse_set_command(args_text):
     mention_ids = _MENTION_RE.findall(args_text)
     plain_text = _MENTION_RE.sub(" ", args_text)
@@ -94,19 +111,7 @@ def parse_set_command(args_text):
 
     month, day = int(date_match.group(1)), int(date_match.group(2))
     hour, minute = int(time_match.group(1)), int(time_match.group(2))
-
-    now = datetime.now(JST)
-    try:
-        start_dt = datetime(now.year, month, day, hour, minute, tzinfo=JST)
-    except ValueError:
-        raise InvalidEventInputError("日付または時刻の値が不正です。")
-
-    # 指定日時が現在より過去の場合、年をまたいだ指定とみなして翌年に繰り上げる
-    if start_dt < now:
-        try:
-            start_dt = start_dt.replace(year=now.year + 1)
-        except ValueError:
-            raise InvalidEventInputError("日付または時刻の値が不正です。")
+    start_dt = _resolve_start_dt(month, day, hour, minute)
 
     return title, start_dt, duration_minutes, mention_ids
 
