@@ -8,11 +8,16 @@ from .bolt_app import app
 logger = logging.getLogger(__name__)
 
 
-# 「登録する」ボタン押下時にプロフィール登録モーダルを開く
+# 「登録する」/「編集する」ボタン押下時にプロフィール登録モーダルを開く
+# （既存プロフィールがあれば選択済みの状態で開く。無ければ新規登録時と同じ空の状態）
 @app.action("open_profile_registration")
 def handle_open_profile_registration(ack, body, client):
     ack()
-    client.views_open(trigger_id=body["trigger_id"], view=messages.profile_registration_view())
+    user_id = body["user"]["id"]
+    current_profile = profile_store.get_user_profile(user_id)
+    client.views_open(
+        trigger_id=body["trigger_id"], view=messages.profile_registration_view(current_profile)
+    )
 
 
 # プロフィール登録モーダル送信時にDBへ保存し、DMで確認メッセージを返す

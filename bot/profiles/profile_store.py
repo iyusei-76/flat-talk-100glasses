@@ -32,7 +32,7 @@ def get_user_profile(slack_user_id):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT join_year, hire_type
+                SELECT join_year, hire_type, accepts_invitations
                 FROM user_profiles
                 WHERE slack_user_id = %s
                 """,
@@ -43,7 +43,7 @@ def get_user_profile(slack_user_id):
     if not row:
         return None
 
-    return {"join_year": row[0], "hire_type": row[1]}
+    return {"join_year": row[0], "hire_type": row[1], "accepts_invitations": row[2]}
 
 
 def set_accepts_invitations(slack_user_id, accepts):

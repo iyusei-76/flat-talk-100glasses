@@ -105,7 +105,40 @@ def _join_year_options():
     ]
 
 
-def profile_registration_view():
+def profile_registration_view(current_profile=None):
+    """current_profileを渡すと、既存の登録内容を選択済みの状態でモーダルを開く（編集用途）。
+    渡さない場合は新規登録時と同じ、何も選択されていない状態になる。"""
+    join_year_options = _join_year_options()
+    hire_type_options = [
+        {"text": {"type": "plain_text", "text": label}, "value": value}
+        for label, value in HIRE_TYPE_OPTIONS
+    ]
+
+    join_year_select = {
+        "type": "static_select",
+        "action_id": "join_year_select",
+        "placeholder": {"type": "plain_text", "text": "年度を選択"},
+        "options": join_year_options,
+    }
+    hire_type_radio = {
+        "type": "radio_buttons",
+        "action_id": "hire_type_radio",
+        "options": hire_type_options,
+    }
+
+    if current_profile:
+        matched_year = next(
+            (o for o in join_year_options if o["value"] == str(current_profile["join_year"])), None
+        )
+        if matched_year:
+            join_year_select["initial_option"] = matched_year
+
+        matched_hire_type = next(
+            (o for o in hire_type_options if o["value"] == current_profile["hire_type"]), None
+        )
+        if matched_hire_type:
+            hire_type_radio["initial_option"] = matched_hire_type
+
     return {
         "type": "modal",
         "callback_id": "profile_registration_modal",
@@ -117,25 +150,13 @@ def profile_registration_view():
                 "type": "input",
                 "block_id": "join_year_block",
                 "label": {"type": "plain_text", "text": "入社年度"},
-                "element": {
-                    "type": "static_select",
-                    "action_id": "join_year_select",
-                    "placeholder": {"type": "plain_text", "text": "年度を選択"},
-                    "options": _join_year_options(),
-                },
+                "element": join_year_select,
             },
             {
                 "type": "input",
                 "block_id": "hire_type_block",
                 "label": {"type": "plain_text", "text": "区分"},
-                "element": {
-                    "type": "radio_buttons",
-                    "action_id": "hire_type_radio",
-                    "options": [
-                        {"text": {"type": "plain_text", "text": label}, "value": value}
-                        for label, value in HIRE_TYPE_OPTIONS
-                    ],
-                },
+                "element": hire_type_radio,
             },
         ],
     }
@@ -385,9 +406,11 @@ def one_on_one_survey_prompt_blocks(event_id, other_user_id, start, end, remaini
     ]
 
 
-def home_view(stage, auth_url=None):
+def home_view(stage, auth_url=None, profile=None, pending_survey_count=0, upcoming_events=None):
     """App Home「ホーム」タブに常時表示するビュー。stage: "needs_google_auth" | "needs_profile" | "ready"。
-    ボタンのaction_idは通常のDMフローと共通（google_oauth_connect / open_profile_registration / open_1on1_category_selection）。"""
+    "ready"のときは`profile`（`profile_store.get_user_profile`の戻り値）が必須。
+    ボタンのaction_idは、既存のもの（google_oauth_connect / open_profile_registration / open_1on1_category_selection）と
+    Home専用の新規もの（home_invite_pause / home_invite_resume / home_open_survey）が混在する。"""
     header = "*ふらっとトーク Bot*"
 
     if stage == "needs_google_auth":
@@ -433,6 +456,9 @@ def home_view(stage, auth_url=None):
             },
         ]
     else:
+        upcoming_events = upcoming_events or []
+        accepts_invitations = profile["accepts_invitations"]
+
         blocks = [
             {
                 "type": "section",
@@ -449,7 +475,76 @@ def home_view(stage, auth_url=None):
                     }
                 ],
             },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        "*プロフィール*\n"
+                        f"入社年度: {profile['join_year']}年度 / {hire_type_label(profile['hire_type'])}"
+                    ),
+                },
+                "accessory": {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "編集する"},
+                    "action_id": "open_profile_registration",
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*1on1の招待*\n" + ("現在、招待を受け付けています。" if accepts_invitations else "現在、招待を一時停止しています。"),
+                },
+                "accessory": (
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "一時停止する"},
+                        "action_id": "home_invite_pause",
+                    }
+                    if accepts_invitations
+                    else {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "再開する"},
+                        "action_id": "home_invite_resume",
+                        "style": "primary",
+                    }
+                ),
+            },
+            {"type": "divider"},
         ]
+
+        if pending_survey_count > 0:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            "*未回答のアンケート*\n"
+                            f"実施済みの1on1について、日程レコメンドのアンケートに{pending_survey_count}件未回答です。"
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "回答する"},
+                        "action_id": "home_open_survey",
+                    },
+                }
+            )
+
+        if upcoming_events:
+            lines = ["*直近の1on1予定*"]
+            for e in upcoming_events:
+                lines.append(
+                    f"• {e['start'].strftime('%m/%d(%a) %H:%M')}〜{e['end'].strftime('%H:%M')} <@{e['other_user_id']}>"
+                )
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}})
+        else:
+            blocks.append(
+                {"type": "section", "text": {"type": "mrkdwn", "text": "*直近の1on1予定*\n予定されている1on1はありません。"}}
+            )
 
     return {"type": "home", "blocks": blocks}
 

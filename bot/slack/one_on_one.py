@@ -248,6 +248,12 @@ def _finalize_1on1_slot(client, user_id, partner_id, start, end):
     # 分析データの記録はユーザーへの通知を全て送った後に行う（記録が遅くても通知速度に影響させないため）
     analytics_store.mark_selected_and_record_event(user_id, partner_id, start, end, event.get("id"))
 
+    # Homeタブの「直近の1on1予定」を最新化する（双方とも対象）
+    from . import commands  # 循環importを避けるため遅延import
+
+    commands.publish_home_view(client, user_id)
+    commands.publish_home_view(client, partner_id)
+
 
 # 候補日時ボタン押下時、その日時で1on1予定をGoogleカレンダーに実登録する
 # （ボタンごとにaction_idを一意にする必要があるため "select_1on1_slot-<index>" にマッチさせる）
@@ -341,6 +347,11 @@ def handle_survey_score(ack, body, client):
     event_id_str, score_str = body["actions"][0]["value"].split("|")
     analytics_store.record_survey(int(event_id_str), user_id, held=True, schedule_score=int(score_str))
     client.chat_postMessage(channel=user_id, text=messages.SURVEY_THANKS_TEXT)
+
+    # Homeタブの「未回答のアンケート」件数を最新化する
+    from . import commands  # 循環importを避けるため遅延import
+
+    commands.publish_home_view(client, user_id)
 
 
 def try_handle_pending_manual_partner(user_id, text, say):

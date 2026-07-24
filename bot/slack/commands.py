@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta
 
 import db
+from analytics import store as analytics_store
 from auth import google_oauth
 from gcal import calendar_client
 from profiles import profile_store
@@ -40,18 +41,43 @@ def _send_google_auth_prompt(user_id, post):
         post(text="Googleカレンダーとの連携", blocks=messages.google_auth_prompt_blocks(auth_url))
 
 
+def _safe_pending_survey_count(user_id):
+    """Homeタブ表示用。分析DBの不調でHome全体が更新できなくなるのを避けるため、ここで失敗を吸収する。"""
+    try:
+        return analytics_store.count_pending_schedule_surveys(user_id)
+    except Exception as e:
+        logger.warning(f"Home表示用の未回答アンケート件数取得に失敗しました ({user_id}): {e}")
+        return 0
+
+
+def _safe_upcoming_events(user_id):
+    """Homeタブ表示用。分析DBの不調でHome全体が更新できなくなるのを避けるため、ここで失敗を吸収する。"""
+    try:
+        return analytics_store.get_upcoming_events(user_id)
+    except Exception as e:
+        logger.warning(f"Home表示用の直近1on1予定取得に失敗しました ({user_id}): {e}")
+        return []
+
+
 def publish_home_view(client, user_id):
     """App Homeの「ホーム」タブに、認証/プロフィール登録状況に応じたビューを常時表示する。
-    認証完了時・プロフィール登録完了時にも呼ばれ、都度最新の状態に更新する。
+    認証完了時・プロフィール登録完了時・招待受付状態の切り替え時にも呼ばれ、都度最新の状態に更新する。
     失敗してもDM等の既存フローには影響させないよう例外はここで握りつぶす。"""
     try:
         if not _is_google_authenticated(user_id):
             auth_url = google_oauth.create_authorization_url(user_id)
             view = messages.home_view("needs_google_auth", auth_url=auth_url)
-        elif not _is_profile_registered(user_id):
-            view = messages.home_view("needs_profile")
         else:
-            view = messages.home_view("ready")
+            profile = profile_store.get_user_profile(user_id)
+            if not profile:
+                view = messages.home_view("needs_profile")
+            else:
+                view = messages.home_view(
+                    "ready",
+                    profile=profile,
+                    pending_survey_count=_safe_pending_survey_count(user_id),
+                    upcoming_events=_safe_upcoming_events(user_id),
+                )
 
         client.views_publish(user_id=user_id, view=view)
     except Exception as e:
@@ -240,6 +266,7 @@ def handle_im_messages(body, say, logger):
             accepts = text == "?invite_resume"
             profile_store.set_accepts_invitations(user_id, accepts)
             say(messages.INVITE_RESUMED_TEXT if accepts else messages.INVITE_PAUSED_TEXT)
+            publish_home_view(app.client, user_id)
 
     # 8. 定義されていない言葉の場合、Google未連携なら連携を、連携済みでプロフィール未登録なら登録を、
     #    プロフィール登録済みなら1on1作成を促す（?startと同じ案内）
@@ -273,3 +300,31 @@ def handle_app_home_opened(event, client):
         _send_google_auth_prompt(
             user_id, lambda **kwargs: client.chat_postMessage(channel=user_id, **kwargs)
         )
+
+
+# Homeタブの「一時停止する」ボタン押下時、招待の受付を停止してHomeを最新状態に更新する
+@app.action("home_invite_pause")
+def handle_home_invite_pause(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    profile_store.set_accepts_invitations(user_id, False)
+    publish_home_view(client, user_id)
+
+
+# Homeタブの「再開する」ボタン押下時、招待の受付を再開してHomeを最新状態に更新する
+@app.action("home_invite_resume")
+def handle_home_invite_resume(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    profile_store.set_accepts_invitations(user_id, True)
+    publish_home_view(client, user_id)
+
+
+# Homeタブの「回答する」ボタン押下時、?surveyコマンドと同じ未回答アンケート提示をDMで送る
+@app.action("home_open_survey")
+def handle_home_open_survey(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    one_on_one.post_next_pending_survey(
+        user_id, lambda **kwargs: client.chat_postMessage(channel=user_id, **kwargs)
+    )
