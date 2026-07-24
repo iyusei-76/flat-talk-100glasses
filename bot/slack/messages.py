@@ -385,6 +385,75 @@ def one_on_one_survey_prompt_blocks(event_id, other_user_id, start, end, remaini
     ]
 
 
+def home_view(stage, auth_url=None):
+    """App Home「ホーム」タブに常時表示するビュー。stage: "needs_google_auth" | "needs_profile" | "ready"。
+    ボタンのaction_idは通常のDMフローと共通（google_oauth_connect / open_profile_registration / open_1on1_category_selection）。"""
+    header = "*ふらっとトーク Bot*"
+
+    if stage == "needs_google_auth":
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"{header}\nGoogleカレンダーと連携すると、1on1の日程調整ができるようになります。",
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Googleと連携する"},
+                        "url": auth_url,
+                        "action_id": "google_oauth_connect",
+                    }
+                ],
+            },
+        ]
+    elif stage == "needs_profile":
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"{header}\nGoogleカレンダーとの連携は完了しています。続けてプロフィールを登録してください。",
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "登録する"},
+                        "action_id": "open_profile_registration",
+                        "style": "primary",
+                    }
+                ],
+            },
+        ]
+    else:
+        blocks = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"{header}\n準備は完了しています。1on1の相手を探しましょう。"},
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "1on1を作成する"},
+                        "action_id": "open_1on1_category_selection",
+                        "style": "primary",
+                    }
+                ],
+            },
+        ]
+
+    return {"type": "home", "blocks": blocks}
+
+
 def manual_1on1_slot_view(partner_id):
     return {
         "type": "modal",

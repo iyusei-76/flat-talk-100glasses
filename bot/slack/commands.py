@@ -40,6 +40,24 @@ def _send_google_auth_prompt(user_id, post):
         post(text="Googleカレンダーとの連携", blocks=messages.google_auth_prompt_blocks(auth_url))
 
 
+def publish_home_view(client, user_id):
+    """App Homeの「ホーム」タブに、認証/プロフィール登録状況に応じたビューを常時表示する。
+    認証完了時・プロフィール登録完了時にも呼ばれ、都度最新の状態に更新する。
+    失敗してもDM等の既存フローには影響させないよう例外はここで握りつぶす。"""
+    try:
+        if not _is_google_authenticated(user_id):
+            auth_url = google_oauth.create_authorization_url(user_id)
+            view = messages.home_view("needs_google_auth", auth_url=auth_url)
+        elif not _is_profile_registered(user_id):
+            view = messages.home_view("needs_profile")
+        else:
+            view = messages.home_view("ready")
+
+        client.views_publish(user_id=user_id, view=view)
+    except Exception as e:
+        logger.error(f"App Home公開エラー ({user_id}): {e}")
+
+
 def _send_next_step_prompt(user_id, post):
     """Google認証・プロフィール登録・1on1作成のうち、未完了の次のステップを案内する。
     post: post(text=..., blocks=...)のシグネチャで呼べる送信関数（sayやchat_postMessageの部分適用）。"""
@@ -235,14 +253,22 @@ def handle_google_oauth_button(ack):
     ack()
 
 
-# ユーザーがBotとのDM（Messagesタブ）を開いた際に発火。Google未連携なら連携を促す。
-# ※ Slackアプリ側の「Event Subscriptions」で app_home_opened の購読が必要。
+# ユーザーがBotとのDM（Messagesタブ）またはHomeタブを開いた際に発火。
+# ※ Slackアプリ側の「Event Subscriptions」で app_home_opened の購読、「App Home」でHome Tabの有効化が必要。
 @app.event("app_home_opened")
 def handle_app_home_opened(event, client):
-    if event.get("tab") != "messages":
+    user_id = event["user"]
+    tab = event.get("tab")
+
+    # Homeタブ: 認証/プロフィール登録状況に応じた常時表示ビューをpublish
+    if tab == "home":
+        publish_home_view(client, user_id)
         return
 
-    user_id = event["user"]
+    # Messagesタブ: Google未連携ならDMで連携を促す（従来通り）
+    if tab != "messages":
+        return
+
     if not _is_google_authenticated(user_id):
         _send_google_auth_prompt(
             user_id, lambda **kwargs: client.chat_postMessage(channel=user_id, **kwargs)

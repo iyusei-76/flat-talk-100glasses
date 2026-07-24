@@ -45,6 +45,11 @@ def oauth2callback():
         "✅ Googleアカウントとの連携が完了しました！",
         blocks=messages.google_auth_success_blocks(),
     )
+
+    from slack import commands  # 循環importを避けるため遅延import
+
+    commands.publish_home_view(_slack_client, slack_user_id)
+
     return "Googleアカウントとの連携が完了しました。このタブは閉じて構いません。"
 
 

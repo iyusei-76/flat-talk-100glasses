@@ -40,3 +40,7 @@ def handle_profile_registration_submission(ack, body, client, view):
         text=f"✅ プロフィールを登録しました。\n入社年度: {join_year}年度 / {messages.hire_type_label(hire_type)}",
         blocks=messages.profile_registration_confirmation_blocks(join_year, hire_type),
     )
+
+    from . import commands  # 循環importを避けるため遅延import
+
+    commands.publish_home_view(client, user_id)
