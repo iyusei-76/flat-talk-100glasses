@@ -79,7 +79,7 @@ def _post_slot_candidates(post, requester_id, partner_id):
         post(text=f"⚠️ {who}のカレンダー取得に失敗しました。\n詳細: {e.cause}")
         return
     except scheduler.NoAvailableSlotError as e:
-        post(text=f"⚠️ {e}")
+        post(text=f"⚠️ {e}", blocks=messages.one_on_one_no_slots_blocks(partner_id, str(e)))
         return
     except Exception as e:
         logger.error(f"1on1日程調整エラー ({requester_id} / {partner_id}): {e}")

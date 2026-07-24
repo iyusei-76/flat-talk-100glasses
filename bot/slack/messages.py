@@ -334,6 +334,25 @@ def one_on_one_slot_candidates_blocks(partner_id, candidates):
     ]
 
 
+def one_on_one_no_slots_blocks(partner_id, reason_text):
+    """自動候補が1件も出せなかった場合の表示（例: 双方の空き時間が見つからない）。
+    日時を自分で指定するボタン（manual_1on1_slotと共通）を添える。"""
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"⚠️ {reason_text}"}},
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "自分で設定する"},
+                    "action_id": "manual_1on1_slot",
+                    "value": partner_id,
+                }
+            ],
+        },
+    ]
+
+
 def one_on_one_scheduled_text(partner_id, partner_email=None, partner_notified=True):
     lines = ["✅ 1on1の予定を登録しました。"]
     if not partner_email:

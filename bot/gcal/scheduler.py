@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time as dtime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 
 import jpholiday
 from googleapiclient.discovery import build
@@ -21,6 +21,10 @@ POST_LUNCH_END_TIME = dtime(13, 30)
 
 # 明日以降、土日祝を除いて何営業日分を候補にするか
 CANDIDATE_BUSINESS_DAYS = 8
+
+# タイトルにこれらの文字列を含む予定は、Googleカレンダー上はbusy設定のままでも
+# 1on1候補としては空き時間として扱う（「サイレントモード」的な予定向け）
+SILENT_MODE_KEYWORDS = ["サイレント", "集中タイム"]
 
 # スコアは最終的にこの範囲へクリップする（各項目の重みは大まかな目安でよく、
 # 積み上がった結果の上限・下限をここで保証する）
@@ -122,14 +126,59 @@ def _day_transition_flags(date):
     return day_before_off, day_after_off
 
 
-def _fetch_busy_intervals(slack_user_id, time_min, time_max):
+def _is_silent_mode_event(event):
+    """Googleカレンダーの「フォーカスタイム」（会議の自動辞退・チャットの取り込み中設定ができる予定種別）か、
+    タイトルにSILENT_MODE_KEYWORDSのいずれかを含むイベントか（どちらもbusy設定でも空き扱いにする対象）。"""
+    if event.get("eventType") == "focusTime":
+        return True
+    summary = event.get("summary") or ""
+    return any(keyword in summary for keyword in SILENT_MODE_KEYWORDS)
+
+
+def _all_day_event_range(event):
+    """終日イベントの[開始, 終了)をJSTのdatetimeで返す（終日イベントでなければNoneを返す）。
+    Googleの終日イベントのend.dateは最終日の翌日（排他的）なのでそのまま終了時刻として使える。"""
+    start_date_str = event.get("start", {}).get("date")
+    end_date_str = event.get("end", {}).get("date")
+    if not start_date_str or not end_date_str:
+        return None
+
+    start_date = date.fromisoformat(start_date_str)
+    end_date = date.fromisoformat(end_date_str)
+    return (
+        datetime.combine(start_date, dtime.min, tzinfo=JST),
+        datetime.combine(end_date, dtime.min, tzinfo=JST),
+    )
+
+
+def _subtract_interval(intervals, remove_start, remove_end):
+    """intervals（busy区間のリスト）から、[remove_start, remove_end)と重なる部分を取り除く。
+    部分的に重なる区間は、重ならない残りの部分（前側・後側）だけを残す形に分割する。"""
+    result = []
+    for start, end in intervals:
+        if end <= remove_start or start >= remove_end:
+            result.append((start, end))
+            continue
+        if start < remove_start:
+            result.append((start, remove_start))
+        if end > remove_end:
+            result.append((remove_end, end))
+    return result
+
+
+def _fetch_busy_intervals(slack_user_id, time_min, time_max, exempt_silent_mode=False):
+    """busy区間を返す。時間指定の予定はfreebusy APIの判定をベースに、
+    exempt_silent_mode=Trueの時だけ、フォーカスタイム/SILENT_MODE_KEYWORDSに一致する予定の時間帯を
+    busy区間から取り除く（他に候補が無い場合のフォールバック探索専用。デフォルトは通常のbusy予定として扱う）。
+    終日予定はfreebusyの判定を使わず、events().list()のeventTypeで独自に判定する
+    （「不在」= outOfOfficeのみbusy、それ以外の終日予定は全てfree。これはexempt_silent_modeに関わらず常に適用）。"""
     credentials = google_oauth.load_credentials(slack_user_id)
     if not credentials:
         raise NotAuthenticatedError(slack_user_id)
 
     try:
         service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
-        response = (
+        freebusy_response = (
             service.freebusy()
             .query(
                 body={
@@ -140,17 +189,50 @@ def _fetch_busy_intervals(slack_user_id, time_min, time_max):
             )
             .execute()
         )
+        events_response = (
+            service.events()
+            .list(
+                calendarId="primary",
+                timeMin=time_min.isoformat(),
+                timeMax=time_max.isoformat(),
+                singleEvents=True,
+            )
+            .execute()
+        )
     except Exception as e:
         raise CalendarFetchError(slack_user_id, e) from e
 
-    busy_periods = response["calendars"]["primary"].get("busy", [])
-    return [
+    busy_periods = [
         (
             datetime.fromisoformat(period["start"]).astimezone(JST),
             datetime.fromisoformat(period["end"]).astimezone(JST),
         )
-        for period in busy_periods
+        for period in freebusy_response["calendars"]["primary"].get("busy", [])
     ]
+
+    for event in events_response.get("items", []):
+        all_day_range = _all_day_event_range(event)
+        if all_day_range is not None:
+            day_start, day_end = all_day_range
+            if event.get("eventType") == "outOfOffice":
+                # 終日の「不在」は明確にbusy（freebusyが既にbusy扱いしていなければ追加する）
+                busy_periods.append((day_start, day_end))
+            else:
+                # 終日の通常予定・サイレントモード予定は、busy設定になっていてもfree扱いにする
+                busy_periods = _subtract_interval(busy_periods, day_start, day_end)
+            continue
+
+        if not exempt_silent_mode or not _is_silent_mode_event(event):
+            continue
+        start_str = event.get("start", {}).get("dateTime")
+        end_str = event.get("end", {}).get("dateTime")
+        if not start_str or not end_str:
+            continue
+        silent_start = datetime.fromisoformat(start_str).astimezone(JST)
+        silent_end = datetime.fromisoformat(end_str).astimezone(JST)
+        busy_periods = _subtract_interval(busy_periods, silent_start, silent_end)
+
+    return busy_periods
 
 
 def _slot_is_busy(slot, busy_intervals):
@@ -158,8 +240,10 @@ def _slot_is_busy(slot, busy_intervals):
     return any(slot_start < b_end and slot_end > b_start for b_start, b_end in busy_intervals)
 
 
-def _busy_flags_by_day(slack_user_id, days, time_min, time_max):
-    busy_intervals = _fetch_busy_intervals(slack_user_id, time_min, time_max)
+def _busy_flags_by_day(slack_user_id, days, time_min, time_max, exempt_silent_mode=False):
+    busy_intervals = _fetch_busy_intervals(
+        slack_user_id, time_min, time_max, exempt_silent_mode=exempt_silent_mode
+    )
     return {
         date: [_slot_is_busy(slot, busy_intervals) for slot in _day_slots(date)]
         for date in days
@@ -199,13 +283,15 @@ def fetch_context_snapshot(slack_user_id):
 
 
 def is_slot_still_available(requester_id, partner_id, start, end):
-    """候補提示からユーザーが選ぶまでの間に埋まっていないか、確定直前に再チェックする。"""
+    """候補提示からユーザーが選ぶまでの間に埋まっていないか、確定直前に再チェックする。
+    候補がサイレントモードをfree扱いにしたフォールバック探索由来かどうかはここでは分からないため、
+    常にexempt_silent_mode=True（最も緩い判定）でチェックする（緩い判定は空きスロットを誤って弾かない）。"""
     slot = (start, end)
-    requester_busy = _fetch_busy_intervals(requester_id, start, end)
+    requester_busy = _fetch_busy_intervals(requester_id, start, end, exempt_silent_mode=True)
     if _slot_is_busy(slot, requester_busy):
         return False
 
-    partner_busy = _fetch_busy_intervals(partner_id, start, end)
+    partner_busy = _fetch_busy_intervals(partner_id, start, end, exempt_silent_mode=True)
     return not _slot_is_busy(slot, partner_busy)
 
 
@@ -364,18 +450,28 @@ def _sorted_candidates(requester_id, partner_id, duration_minutes):
     time_min = datetime.combine(days[0], DAY_START_TIME, tzinfo=JST)
     time_max = datetime.combine(days[-1], DAY_END_TIME, tzinfo=JST)
 
-    requester_busy_by_day = _busy_flags_by_day(requester_id, days, time_min, time_max)
-    partner_busy_by_day = _busy_flags_by_day(partner_id, days, time_min, time_max)
-
     late_request_cutoff = None
     if now.time() >= LATE_REQUEST_CUTOFF_TIME:
         late_request_cutoff = datetime.combine(
             today + timedelta(days=1), LATE_REQUEST_CUTOFF_TIME, tzinfo=JST
         )
 
-    candidates = _generate_candidates(
-        days, requester_busy_by_day, partner_busy_by_day, duration_minutes, late_request_cutoff
-    )
+    # まずサイレントモード（フォーカスタイム/SILENT_MODE_KEYWORDS）もbusyとして扱って探索し、
+    # 候補が1件も無い場合だけサイレントモードをfree扱いにして再探索する（フォールバック）
+    candidates = []
+    for exempt_silent_mode in (False, True):
+        requester_busy_by_day = _busy_flags_by_day(
+            requester_id, days, time_min, time_max, exempt_silent_mode=exempt_silent_mode
+        )
+        partner_busy_by_day = _busy_flags_by_day(
+            partner_id, days, time_min, time_max, exempt_silent_mode=exempt_silent_mode
+        )
+        candidates = _generate_candidates(
+            days, requester_busy_by_day, partner_busy_by_day, duration_minutes, late_request_cutoff
+        )
+        if candidates:
+            break
+
     if not candidates:
         raise NoAvailableSlotError("双方の空き時間が見つかりませんでした。")
 
