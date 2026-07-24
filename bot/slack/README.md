@@ -37,6 +37,7 @@ Slack Bolt を使ったイベント/アクションのハンドラと、ユー�
 3. `retry_1on1_category` : 「もう一度選ぶ」ボタン。同じカテゴリで再抽選（`select_1on1_category-*`と同じ処理を再実行）
 4. `select_1on1_partner-*` : `gcal/calendar_client.find_1on1_slot_candidates`で候補日時を3件提示
 5. `select_1on1_slot-*` : 提示された候補日時ボタン押下時、選択直前に空き状況を再チェック（`is_1on1_slot_still_available`）してから`_finalize_1on1_slot`でカレンダーに登録し、双方へ通知
+   - 相手（招待された側）へのDM（`messages.one_on_one_confirmed_partner_text`）は、相手のメールアドレスが取得できてGoogleカレンダーの招待(attendee)に実際に入っている場合のみ「都合が悪ければカレンダーの招待から辞退してよい」という案内を添える（メール未取得で招待自体が届いていない場合はこの案内は出さない）
 6. `manual_1on1_slot` → `manual_1on1_slot_modal` : 候補日時の下の「自分で設定する」ボタンから日付・時刻をモーダルで直接指定するフロー。過去日時はモーダルのバリデーションでエラーにし、送信時は`select_1on1_slot-*`と同じ`_finalize_1on1_slot`で登録する
 7. `manual_1on1_partner` : ランダム抽選ではなく相手を`@`メンションで直接指定するフロー（`_pending_manual_partners`に入力待ちユーザーを保持し、`try_handle_pending_manual_partner`が`commands.py`から呼ばれる）
 
