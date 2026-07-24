@@ -406,11 +406,12 @@ def one_on_one_survey_prompt_blocks(event_id, other_user_id, start, end, remaini
     ]
 
 
-def home_view(stage, auth_url=None, profile=None, pending_survey_count=0, upcoming_events=None):
+def home_view(stage, auth_url=None, profile=None, pending_survey_count=0):
     """App Home「ホーム」タブに常時表示するビュー。stage: "needs_google_auth" | "needs_profile" | "ready"。
     "ready"のときは`profile`（`profile_store.get_user_profile`の戻り値）が必須。
     ボタンのaction_idは、既存のもの（google_oauth_connect / open_profile_registration / open_1on1_category_selection）と
-    Home専用の新規もの（home_invite_pause / home_invite_resume / home_open_survey）が混在する。"""
+    Home専用の新規もの（home_invite_pause / home_invite_resume / home_open_survey）が混在する。
+    1on1の予定自体はGoogleカレンダー側が正なので、ここでは表示しない（DBの記録とカレンダーの実状態がズレるリスクを避けるため）。"""
     header = "*ふらっとトーク Bot*"
 
     if stage == "needs_google_auth":
@@ -456,7 +457,6 @@ def home_view(stage, auth_url=None, profile=None, pending_survey_count=0, upcomi
             },
         ]
     else:
-        upcoming_events = upcoming_events or []
         accepts_invitations = profile["accepts_invitations"]
 
         blocks = [
@@ -532,18 +532,6 @@ def home_view(stage, auth_url=None, profile=None, pending_survey_count=0, upcomi
                         "action_id": "home_open_survey",
                     },
                 }
-            )
-
-        if upcoming_events:
-            lines = ["*直近の1on1予定*"]
-            for e in upcoming_events:
-                lines.append(
-                    f"• {e['start'].strftime('%m/%d(%a) %H:%M')}〜{e['end'].strftime('%H:%M')} <@{e['other_user_id']}>"
-                )
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}})
-        else:
-            blocks.append(
-                {"type": "section", "text": {"type": "mrkdwn", "text": "*直近の1on1予定*\n予定されている1on1はありません。"}}
             )
 
     return {"type": "home", "blocks": blocks}

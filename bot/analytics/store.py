@@ -286,31 +286,3 @@ def count_pending_schedule_surveys(slack_user_id):
             return cur.fetchone()[0]
 
 
-def get_upcoming_events(slack_user_id, limit=5):
-    """開始前（まだ実施していない）の確定済み1on1を、開始が近い順に返す（Homeタブでの表示用）。
-    例外は握りつぶさない（呼び出し側で表示可否を判断する）。"""
-    with db.get_analytics_connection() as conn:
-        _ensure_schema(conn)
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                    e.id,
-                    CASE WHEN e.requester_id = %(user_id)s THEN e.partner_id ELSE e.requester_id END,
-                    e.original_start,
-                    e.original_end
-                FROM one_on_one_events e
-                WHERE (e.requester_id = %(user_id)s OR e.partner_id = %(user_id)s)
-                  AND e.original_start > CURRENT_TIMESTAMP
-                  AND e.status != 'cancelled'
-                ORDER BY e.original_start ASC
-                LIMIT %(limit)s
-                """,
-                {"user_id": slack_user_id, "limit": limit},
-            )
-            rows = cur.fetchall()
-
-    return [
-        {"event_id": row[0], "other_user_id": row[1], "start": row[2], "end": row[3]}
-        for row in rows
-    ]

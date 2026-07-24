@@ -50,15 +50,6 @@ def _safe_pending_survey_count(user_id):
         return 0
 
 
-def _safe_upcoming_events(user_id):
-    """Homeタブ表示用。分析DBの不調でHome全体が更新できなくなるのを避けるため、ここで失敗を吸収する。"""
-    try:
-        return analytics_store.get_upcoming_events(user_id)
-    except Exception as e:
-        logger.warning(f"Home表示用の直近1on1予定取得に失敗しました ({user_id}): {e}")
-        return []
-
-
 def publish_home_view(client, user_id):
     """App Homeの「ホーム」タブに、認証/プロフィール登録状況に応じたビューを常時表示する。
     認証完了時・プロフィール登録完了時・招待受付状態の切り替え時にも呼ばれ、都度最新の状態に更新する。
@@ -76,7 +67,6 @@ def publish_home_view(client, user_id):
                     "ready",
                     profile=profile,
                     pending_survey_count=_safe_pending_survey_count(user_id),
-                    upcoming_events=_safe_upcoming_events(user_id),
                 )
 
         client.views_publish(user_id=user_id, view=view)
